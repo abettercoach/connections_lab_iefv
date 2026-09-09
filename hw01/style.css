@@ -1,0 +1,97 @@
+body {
+    display: grid;
+    grid-template-columns: 20% 33% 47%;
+    grid-template-rows: 10% 80% 10%;
+}
+header {
+    grid-column: 1;
+    grid-row: 2 / 3;
+    text-align: right;
+}
+
+nav ul {
+    list-style-type: none;
+}
+
+main {
+    display: grid;
+    grid-column: 2 / 4;
+    grid-template-rows: 10% 80% 10%;
+    height: 100vh;
+}
+
+section {
+    display: grid;
+    grid-template-columns: 40% 60%;
+    grid-template-rows: 100%;
+}
+
+section#prev {
+    grid-column: 1;
+    grid-row: 1 / 2;
+}
+
+section#next {
+    grid-column: 1;
+    grid-row: 3 / 4;
+}
+
+section#curr {
+    grid-column: 1 / 2;
+    grid-row: 2 / 4;
+    height: 80vh;
+}
+
+section .video {
+    grid-column: 1;
+    position: relative;
+}
+
+section .video h1 {
+    position: absolute;
+    background: red;
+    bottom: 30px;
+    width: 100%;
+    text-align: center;
+    transform: rotate(-10deg);
+}
+
+section .video img {
+    width: 100%;
+    height: 10px;
+    vertical-align: middle;
+
+    position: relative;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+section#curr .video img {
+    width: auto;
+    height: 100%;
+    aspect-ratio: 9 / 16;
+    object-fit: cover;
+}
+
+section#curr .actions {
+    display: flex;
+    flex-direction: column;
+    width: 40px;
+    margin-left: 20px;
+    margin-top: 40px;
+}
+
+
+section#curr .actions button {
+    height: 40px;
+    width: 40px;
+    margin-bottom: 15px;
+    border: none;
+    background: red;
+}
+
+section#curr article {
+    grid-row: 1;
+    grid-column: 2;
+    margin-left: 60px;
+}
