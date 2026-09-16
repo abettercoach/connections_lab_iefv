@@ -52,7 +52,7 @@ body.complete {
 @keyframes shiver {
     from {
         color: blue;
-        font-size: 85pt;
+        font-size: 75pt;
     }
     to {
         color: var(--foreground);
