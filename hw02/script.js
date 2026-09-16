@@ -76,8 +76,8 @@ function snap() {
 let impatience = 0;
 
 function freeze() {
-    clearTimeout(approachTimer);
-    clearTimeout(hesitationTimer);
+    beStill();
+    releaseBreath();
 
     shrink();
 
