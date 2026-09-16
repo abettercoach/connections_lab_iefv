@@ -18,7 +18,8 @@ function needs(newNeed) {
 }
 
 function listen() {
-    document.addEventListener("keydown", react);
+    document.addEventListener("keydown", react);   
+    text.addEventListener("animationend", clearAnimation);
 }
 
 function react(event) {
@@ -52,7 +53,7 @@ function withdraw() {
 }
 
 function move() {
-    // Illusion of distance by adjusting the text's position based on the current space value
+    // Illusion of distance by adjusting the text's size based on the current space value
     const minScale = 0.15;
     const scale = 1 - (space / spaceNeeded) * (1 - minScale);
     text.style.transform = `scale(${scale})`;
@@ -65,14 +66,6 @@ function confront() {
     snap();
 }
 
-function snap() {
-    text.classList.remove("flash", "shiver");
-
-    requestAnimationFrame(() => {
-        text.classList.add("flash");
-    });
-}
-
 let impatience = 0;
 
 function freeze() {
@@ -81,7 +74,7 @@ function freeze() {
 
     shrink();
 
-    impatience += 34;
+    impatience = Math.min(impatience + 34, 100);
     let patience = impatience < 100;
     let closeish = space < spaceNeeded / 2;
 
@@ -89,44 +82,65 @@ function freeze() {
         impatience = 0;
         needs("space");
     } else {
-        //If still patient or far enough, keep approaching after a pause
         musterCourage();
     }
 }
 
-function shrink() {
-    text.classList.remove("shiver", "flash");
+let pendingAnimation;
 
-    requestAnimationFrame(() => {
-        text.classList.add("shiver");
+function animate(className) {
+    cancelAnimationFrame(pendingAnimation);
+
+    text.classList.remove("flash", "shiver");
+
+    pendingAnimation = requestAnimationFrame(() => {
+        text.classList.add(className);
     });
 }
 
-let approachTimer;
-let breathTimer;
+function snap() {
+    animate("flash");
+}
+
+function shrink() {
+    animate("shiver");
+}
+
+function clearAnimation(event) {
+    if (event.animationName === "flashRed") {
+        text.classList.remove("flash");
+    }
+
+    if (event.animationName === "shiver") {
+        text.classList.remove("shiver");
+    }
+}
+
+let readyNextStep;
+let readyNextBreath;
 
 function beStill() {
-    clearTimeout(approachTimer);
-    approachTimer = null;
+    clearTimeout(readyNextStep);
+    readyNextStep = null;
 }
 
 function releaseBreath() {
-    clearTimeout(breathTimer);
-    breathTimer = null;
+    clearTimeout(readyNextBreath);
+    readyNextBreath = null;
 }
 
 function musterCourage() {
     beStill();
     releaseBreath();
-    takeBreathAnd(approach);
+    firstStep();
 }
 
-function takeBreathAnd(callback) {
-    breathTimer = setTimeout(() => callback(0), 2750);
+function firstStep() {
+    readyNextBreath = setTimeout(takeStep, 2750);
 }
 
-function approach(delay = 100) {
-    approachTimer = setTimeout(() => {
+function takeStep() {
+    readyNextStep = setTimeout(() => {
         impatience = Math.max(impatience - 0.5, 0); //reduce impatience
         space = Math.max(space - 0.3, 0); //reduce space
 
@@ -139,9 +153,9 @@ function approach(delay = 100) {
             needsMet = true;
             relax();
         } else if (need === "time") {
-            approach();
+            takeStep();
         }
-    }, delay);
+    }, 100);
 }
 
 function relax() {
