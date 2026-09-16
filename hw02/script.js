@@ -25,7 +25,7 @@ function react(event) {
     if (needsMet) return;
 
     if (need === "space") {
-        if (isSpace(event.key)) {
+        if (givenSpace(event.key)) {
             withdraw();
         } else {
             confront();
@@ -35,18 +35,19 @@ function react(event) {
     }
 }
 
-function isSpace(key) {
+function givenSpace(key) {
     return key === " ";
 }
 
 function withdraw() {
-    space += 10;
+    space += 10; //Increase space 
     space = Math.min(space, spaceNeeded); //Keeps space from going over the max value
     move();
 
-    if (space >= spaceNeeded) {
+    let enoughSpace = space === spaceNeeded;
+    if (enoughSpace) {
         needs("time");
-        hesitate();
+        musterCourage();
     }
 }
 
@@ -89,7 +90,7 @@ function freeze() {
         needs("space");
     } else {
         //If still patient or far enough, keep approaching after a pause
-        hesitate();
+        musterCourage();
     }
 }
 
@@ -102,20 +103,32 @@ function shrink() {
 }
 
 let approachTimer;
-let hesitationTimer;
+let breathTimer;
 
-function hesitate() {
+function beStill() {
     clearTimeout(approachTimer);
-    clearTimeout(hesitationTimer);
+    approachTimer = null;
+}
 
-    hesitationTimer = setTimeout(() => approach(0), 2750);
+function releaseBreath() {
+    clearTimeout(breathTimer);
+    breathTimer = null;
+}
+
+function musterCourage() {
+    beStill();
+    releaseBreath();
+    takeBreathAnd(approach);
+}
+
+function takeBreathAnd(callback) {
+    breathTimer = setTimeout(() => callback(0), 2750);
 }
 
 function approach(delay = 100) {
     approachTimer = setTimeout(() => {
-        //Approach by reducing impatience and space over time, simulating a gradual closing in
-        impatience = Math.max(impatience - 0.5, 0);
-        space = Math.max(space - 0.3, 0);
+        impatience = Math.max(impatience - 0.5, 0); //reduce impatience
+        space = Math.max(space - 0.3, 0); //reduce space
 
         move();
 
@@ -132,8 +145,8 @@ function approach(delay = 100) {
 }
 
 function relax() {
-    clearTimeout(approachTimer);
-    clearTimeout(hesitationTimer);
+    beStill();
+    releaseBreath();
 
     body.classList.add("complete");
 
