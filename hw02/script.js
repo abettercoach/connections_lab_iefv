@@ -3,7 +3,7 @@ const body = document.body;
 
 let need, needsMet, space, spaceNeeded;
 
-function setup() {
+function begin() {
     needsMet = false;
     space = 0;
     needs("space");
@@ -169,4 +169,4 @@ function relax() {
     }, 2000);
 }
 
-setup();
+begin();
