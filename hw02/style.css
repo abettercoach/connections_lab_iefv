@@ -1,0 +1,50 @@
+:root {
+    --background: #000;
+    --foreground: #fff;
+}
+
+body {
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    background: var(--background);
+}
+
+@keyframes complete {
+    to {
+        background: #fff;
+    }
+}
+
+body.complete {
+    animation: complete 2000ms forwards;
+}
+
+#text {
+    width: 100%;
+    height: 100%;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+
+    color: var(--foreground);
+    font-size: 80pt;
+}
+
+@keyframes flashRed {
+    from {
+        color: red;
+        font-size: 200pt;
+        text-transform: uppercase;
+    }
+    to {
+        color: var(--foreground);
+        font-size: 80pt;
+    }
+}
+
+#text.flash {
+    animation: flashRed 1200ms;
+}
