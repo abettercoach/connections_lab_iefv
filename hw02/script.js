@@ -83,7 +83,7 @@ function freeze() {
 
     impatience += 34;
     let patience = impatience < 100;
-    let closeish = space > spaceNeeded / 2;
+    let closeish = space < spaceNeeded / 2;
 
     if (!patience && closeish) {
         impatience = 0;
