@@ -28,11 +28,12 @@ function withdraw() {
 }
 
 function confront() {
+    console.log("confront");
     space -= 15;
     space = Math.max(0, Math.min(space, spaceNeeded));
     move();
 
-    text.classList.remove("flash");
+    text.classList.remove("flash", "shiver");
 
     requestAnimationFrame(() => {
         text.classList.add("flash");
@@ -58,15 +59,21 @@ function freeze() {
     clearTimeout(approachTimer);
     clearTimeout(pauseTimer);
 
+    text.classList.remove("shiver", "flash");
+
+    requestAnimationFrame(() => {
+        text.classList.add("shiver");
+    });
+
     impatience += 34;
 
-    if (impatience >= 100) {
+    if (impatience >= 100 && space < spaceNeeded/2) {
         impatience = 0;
         needs("space");
         return;
     }
 
-    pauseTimer = setTimeout(() => approach(0), 2500);
+    pauseTimer = setTimeout(() => approach(0), 2000);
 }
 
 function release() {

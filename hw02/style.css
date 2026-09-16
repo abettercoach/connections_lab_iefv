@@ -48,3 +48,18 @@ body.complete {
 #text.flash {
     animation: flashRed 1200ms;
 }
+
+@keyframes shiver {
+    from {
+        color: blue;
+        font-size: 85pt;
+    }
+    to {
+        color: var(--foreground);
+        font-size: 80pt;
+    }
+}
+
+#text.shiver {
+    animation: shiver 1000ms;
+}
