@@ -1,8 +1,16 @@
 let star_coords;
 let brightest_magnitude;
 let star_glows = [];
-const POINTER_GLOW_RADIUS = 0.16;
-const POINTER_GLOW_INTENSITY = 0.96;
+let pointer_ripples = [];
+let last_pointer_x = null;
+let last_pointer_y = null;
+let pointer_travel_since_ripple = 0;
+
+const RIPPLE_SPACING = 42;
+const RIPPLE_SPEED = 320;
+const RIPPLE_WIDTH = 8;
+const RIPPLE_INTENSITY = 0.36;
+const MAX_ACTIVE_RIPPLES = 15;
 
 async function setup() {
     createCanvas(windowWidth, windowHeight);
@@ -18,6 +26,11 @@ function draw() {
     let centerX = width / 2;
     let centerY = height / 2;
     let diskRadius = min(width, height) * 0.44;
+    let currentMillis = millis();
+
+    pointer_ripples = pointer_ripples.filter(ripple =>
+        currentMillis - ripple.startedAt < (2 * diskRadius / RIPPLE_SPEED) * 1000 + 600
+    );
 
     noStroke();
     fill(4, 7, 16);
@@ -27,7 +40,7 @@ function draw() {
     drawingContext.beginPath();
     drawingContext.arc(centerX, centerY, diskRadius, 0, TWO_PI);
     drawingContext.clip();
-    draw_stars(observer, localSiderealTime, centerX, centerY, diskRadius);
+    draw_stars(observer, localSiderealTime, centerX, centerY, diskRadius, currentMillis);
     drawingContext.restore();
 
     noFill();
@@ -41,18 +54,68 @@ function windowResized() {
     resizeCanvas(windowWidth, windowHeight);
 }
 
-function draw_stars(observer, localSiderealTime, centerX, centerY, diskRadius) {
+function mouseMoved() {
+    emitRipplesAlongPointer();
+}
+
+function mouseDragged() {
+    emitRipplesAlongPointer();
+}
+
+function emitRipplesAlongPointer() {
+    if (last_pointer_x === null) {
+        last_pointer_x = mouseX;
+        last_pointer_y = mouseY;
+        return;
+    }
+
+    let segmentX = last_pointer_x;
+    let segmentY = last_pointer_y;
+    let remainingX = mouseX - segmentX;
+    let remainingY = mouseY - segmentY;
+    let remainingDistance = Math.hypot(remainingX, remainingY);
+
+    while (pointer_travel_since_ripple + remainingDistance >= RIPPLE_SPACING) {
+        let distanceToRipple = RIPPLE_SPACING - pointer_travel_since_ripple;
+        let fraction = distanceToRipple / remainingDistance;
+        segmentX += remainingX * fraction;
+        segmentY += remainingY * fraction;
+        emitPointerRipple(segmentX, segmentY);
+
+        remainingX = mouseX - segmentX;
+        remainingY = mouseY - segmentY;
+        remainingDistance = Math.hypot(remainingX, remainingY);
+        pointer_travel_since_ripple = 0;
+    }
+
+    pointer_travel_since_ripple += remainingDistance;
+    last_pointer_x = mouseX;
+    last_pointer_y = mouseY;
+}
+
+function emitPointerRipple(x, y) {
+    let centerX = width / 2;
+    let centerY = height / 2;
+    let diskRadius = min(width, height) * 0.44;
+
+    if (dist(x, y, centerX, centerY) > diskRadius) return;
+
+    pointer_ripples.push({ x, y, startedAt: millis() });
+    if (pointer_ripples.length > MAX_ACTIVE_RIPPLES) pointer_ripples.shift();
+}
+
+function draw_stars(observer, localSiderealTime, centerX, centerY, diskRadius, currentMillis) {
     for (let index = 0; index < star_coords.length; index++) {
-        draw_star(star_coords[index], observer, localSiderealTime, centerX, centerY, diskRadius, index);
+        draw_star(star_coords[index], observer, localSiderealTime, centerX, centerY, diskRadius, index, currentMillis);
     }
 }
 
-function draw_star(coord, observer, localSiderealTime, centerX, centerY, diskRadius, index) {
+function draw_star(coord, observer, localSiderealTime, centerX, centerY, diskRadius, index, currentMillis) {
     let horizontal = horizontalCoordsFor(coord, observer, localSiderealTime);
     let point = skyPositionFor(horizontal.altitude, horizontal.azimuth, centerX, centerY, diskRadius);
     let targetGlow = horizontal.altitude < 0
         ? 0
-        : mouseBrightnessBoost(point.x, point.y, mouseX, mouseY, diskRadius);
+        : rippleBrightnessAt(point.x, point.y, currentMillis);
     let glow = smoothStarGlow(star_glows[index] || 0, targetGlow, deltaTime);
     star_glows[index] = glow;
     if (horizontal.altitude < 0) return;
@@ -82,12 +145,19 @@ function smoothStarGlow(current, target, elapsedMilliseconds) {
     return current + (target - current) * amount;
 }
 
-function mouseBrightnessBoost(starX, starY, pointerX, pointerY, diskRadius) {
-    let effectRadius = diskRadius * POINTER_GLOW_RADIUS;
-    let proximity = constrain(1 - dist(pointerX, pointerY, starX, starY) / effectRadius, 0, 1);
-    let smoothFalloff = proximity * proximity * (3 - 2 * proximity);
+function rippleBrightnessAt(starX, starY, currentMillis) {
+    let strongestRipple = 0;
 
-    return smoothFalloff * POINTER_GLOW_INTENSITY;
+    for (let ripple of pointer_ripples) {
+        let elapsed = (currentMillis - ripple.startedAt) / 1000;
+        let waveRadius = elapsed * RIPPLE_SPEED;
+        let distanceToWave = Math.abs(dist(starX, starY, ripple.x, ripple.y) - waveRadius);
+        let wave = Math.exp(-0.5 * (distanceToWave / RIPPLE_WIDTH) ** 2);
+        let decay = Math.exp(-elapsed / 1.4);
+        strongestRipple = max(strongestRipple, wave * decay);
+    }
+
+    return strongestRipple * RIPPLE_INTENSITY;
 }
 
 function starDisplayIntensity(magnitude) {
