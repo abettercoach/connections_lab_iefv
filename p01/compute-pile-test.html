@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>Compute-shader pile test</title>
+	<link rel="stylesheet" href="compute-pile-test.css" />
+</head>
+<body>
+	<main id="experience">
+		<canvas id="pile-canvas"></canvas>
+		<div id="panel">
+			<h1>Compute-shader pile</h1>
+			<p class="note">
+				WebGPU spike: falling + piling only, uniform particles. No drag,
+				placement, or sky data yet &mdash; see ARCHITECTURE.md.
+			</p>
+			<div class="controls">
+				<label for="particle-count">Particles</label>
+				<select id="particle-count">
+					<option value="1000">1,000</option>
+					<option value="3000">3,000</option>
+					<option value="6000" selected>6,000</option>
+					<option value="10000">10,000</option>
+				</select>
+				<button id="release">Release</button>
+				<button id="reset">Reset</button>
+			</div>
+			<div class="controls">
+				<button id="play-pause">Pause</button>
+				<button id="step-once">Step +1</button>
+				<input type="range" id="frame-slider" min="0" max="0" value="0" step="1" />
+				<span id="frame-label">step 0 / 0</span>
+			</div>
+			<p id="status">Checking for WebGPU&hellip;</p>
+		</div>
+	</main>
+	<script src="compute-pile-test.js"></script>
+</body>
+</html>
