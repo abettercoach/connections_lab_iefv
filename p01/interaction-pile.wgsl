@@ -392,7 +392,7 @@ struct VertexOut {
 // starSize grows gently with brightness (a barely-visible star and the
 // brightest star in the sky differ in size, not just alpha).
 fn starSizeFor(brightness: f32) -> f32 {
-	return 1.1 + brightness * 0.9;
+	return 1.3 + brightness * 4.0;
 }
 
 // A star that has just been dropped into its correct spot needs to read
