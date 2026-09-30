@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>Interaction pile test</title>
+	<link rel="stylesheet" href="interaction-pile-test.css" />
+</head>
+<body>
+	<main id="experience">
+		<canvas id="disk-canvas"></canvas>
+		<canvas id="pile-canvas"></canvas>
+		<canvas id="overlay-canvas"></canvas>
+		<div id="panel">
+			<h1>Interaction pile</h1>
+			<p class="note">
+				WebGPU spike: fall, pile, then pick a settled star and drag it
+				back to where it belongs. Wrong drop &rarr; it falls again.
+				Real-time play only &mdash; see ARCHITECTURE.md.
+			</p>
+			<div class="controls">
+				<button id="release">Release</button>
+				<button id="reset">Reset</button>
+			</div>
+			<div class="controls">
+				<label for="brightness-boost">Extra brightness (manual, on top of automatic reveal)</label>
+				<input type="range" id="brightness-boost" min="1" max="30" value="1" step="0.5" />
+				<span id="brightness-label">1.0</span>
+			</div>
+			<p id="placement-status">0 / 0 placed</p>
+			<p id="status">Checking for WebGPU&hellip;</p>
+		</div>
+	</main>
+	<script src="interaction-pile-test.js"></script>
+</body>
+</html>

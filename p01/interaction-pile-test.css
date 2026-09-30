@@ -1,0 +1,130 @@
+html, body {
+	margin: 0;
+	height: 100%;
+	background: #f1eee7;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	color: #14161c;
+}
+
+#experience {
+	position: relative;
+	width: 100vw;
+	height: 100vh;
+	overflow: hidden;
+}
+
+#disk-canvas {
+	display: block;
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	/* Purely a backdrop: one dark filled circle marking the sky disk,
+	   redrawn only on resize (see drawDiskBackdrop() in the JS). Sits
+	   behind #pile-canvas so a star rendered outside the disk shows black
+	   against the page's own light background, and a star inside it shows
+	   white against this dark circle - the WebGPU canvas itself is left
+	   transparent so this shows through. */
+	pointer-events: none;
+}
+
+#pile-canvas {
+	display: block;
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+}
+
+#overlay-canvas {
+	display: block;
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	/* Pointer handling stays on #pile-canvas (it's the one WebGPU renders
+	   the actual stars to); this canvas only ever draws the target pulse
+	   rings on top, purely visual, so it must not intercept drags. */
+	pointer-events: none;
+}
+
+#panel {
+	position: absolute;
+	top: 0;
+	left: 0;
+	padding: 16px 20px;
+	max-width: 360px;
+	pointer-events: none;
+}
+
+#panel h1 {
+	font-size: 15px;
+	margin: 0 0 6px;
+	letter-spacing: 0.02em;
+}
+
+#panel .note {
+	font-size: 12px;
+	line-height: 1.5;
+	opacity: 0.72;
+	margin: 0 0 12px;
+}
+
+.controls {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	pointer-events: auto;
+	margin-bottom: 10px;
+}
+
+.controls select,
+.controls button {
+	font: inherit;
+	font-size: 12px;
+	background: #ffffff;
+	color: #14161c;
+	border: 1px solid #b7b2a4;
+	border-radius: 4px;
+	padding: 6px 10px;
+	cursor: pointer;
+}
+
+.controls button:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.controls #brightness-boost {
+	flex: 1;
+	min-width: 90px;
+}
+
+.controls #brightness-label {
+	font-size: 11px;
+	opacity: 0.7;
+	white-space: nowrap;
+}
+
+#status {
+	font-size: 12px;
+	opacity: 0.85;
+	margin: 0;
+}
+
+#placement-status {
+	font-size: 12px;
+	opacity: 0.85;
+	margin: 0 0 4px;
+}
+
+@media (max-width: 520px) {
+	#panel {
+		max-width: none;
+		right: 0;
+	}
+}
+
