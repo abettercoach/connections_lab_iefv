@@ -44,6 +44,12 @@ struct Params {
 @group(0) @binding(3) var<storage, read_write> gridHead: array<atomic<u32>>;
 @group(0) @binding(4) var<storage, read_write> gridNext: array<u32>;
 
+// A sleeping (settled) particle only wakes back up when an active neighbor
+// overlaps it by more than this fraction of its radius - i.e. a real
+// impact/avalanche, not the shallow steady-state overlap of something
+// merely resting its weight on it.
+const WAKE_OVERLAP_FRACTION: f32 = 0.5;
+
 fn gridWU() -> u32 { return u32(params.gridW); }
 fn gridHU() -> u32 { return u32(params.gridH); }
 fn numParticlesU() -> u32 { return u32(params.numParticles); }
@@ -90,6 +96,12 @@ fn buildGrid(@builtin(global_invocation_id) gid: vec3<u32>) {
 // exactly once per fixed physics step, before any collision resolution, so
 // that repeating the resolve pass below never double-integrates motion.
 //
+// A settled particle is asleep: it is skipped here entirely (no gravity, no
+// motion) so it can act as a stable, immovable base for the pile instead of
+// being nudged downhill by residual solver error every single step, which
+// is what made piles slowly flatten over time. resolve() is what wakes a
+// sleeping particle back up if something hits it hard enough.
+//
 // Also snapshots stepStartPos (this particle's position before gravity/
 // movement) so resolve() can derive the step's true velocity from real net
 // displacement once all its iterations are done.
@@ -99,8 +111,10 @@ fn integrate(@builtin(global_invocation_id) gid: vec3<u32>) {
 	if (index >= numParticlesU()) { return; }
 	var p = particlesRead[index];
 	p.stepStartPos = p.pos;
-	p.vel.y = p.vel.y + params.gravity * params.dt;
-	p.pos = p.pos + p.vel * params.dt;
+	if (p.settled < 0.5) {
+		p.vel.y = p.vel.y + params.gravity * params.dt;
+		p.pos = p.pos + p.vel * params.dt;
+	}
 	particlesWrite[index] = p;
 }
 
@@ -148,10 +162,12 @@ fn resolve(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 	let predictedPos = p.pos;
 	let cell = cellCoordFor(predictedPos);
+	let selfAsleep = p.settled > 0.5;
 
 	var totalCorrection = vec2<f32>(0.0, 0.0);
 	var totalFrictionCorrection = vec2<f32>(0.0, 0.0);
 	var contactCount = 0.0;
+	var forcedWake = false;
 
 	for (var dy = -1; dy <= 1; dy = dy + 1) {
 		for (var dx = -1; dx <= 1; dx = dx + 1) {
@@ -168,35 +184,55 @@ fn resolve(@builtin(global_invocation_id) gid: vec3<u32>) {
 					let minDist = p.radius + other.radius;
 					if (dist < minDist) {
 						let overlap = minDist - dist;
-						var normal = coincidentPairNormal(index, otherIndex);
-						if (dist > 0.0001) {
-							normal = delta / dist;
-						}
-						// Each side corrects only itself by half the overlap; the
-						// other particle's own invocation applies its own half,
-						// so together they separate fully without a data race.
-						let normalCorrection = normal * (overlap * 0.5);
-						totalCorrection = totalCorrection + normalCorrection;
+						let otherAsleep = other.settled > 0.5;
 
-						// Coulomb-style positional friction: reduce this pair's
-						// relative tangential travel, bounded by mu times the
-						// normal correction. Equal-mass particles each receive
-						// half the pair correction, with opposite signs.
-						let selfDisplacement = p.pos - p.stepStartPos;
-						let otherDisplacement = other.pos - other.stepStartPos;
-						let relativeDisplacement = selfDisplacement - otherDisplacement;
-						let tangentialDisplacement = relativeDisplacement
-							- normal * dot(relativeDisplacement, normal);
-						let tangentialDistance = length(tangentialDisplacement);
-						if (tangentialDistance > 0.0001) {
-							let frictionDistance = min(
-								tangentialDistance * 0.5,
-								params.particleFriction * overlap * 0.5
-							);
-							totalFrictionCorrection = totalFrictionCorrection
-								- tangentialDisplacement / tangentialDistance * frictionDistance;
+						if (selfAsleep) {
+							// A sleeping particle only reconsiders its rest if an
+							// active neighbor hits it hard enough (see
+							// WAKE_OVERLAP_FRACTION); otherwise it stays frozen
+							// and contributes no correction this pass, letting
+							// it act as a stable base instead of being nudged by
+							// every neighbor's residual solver error. Contact is
+							// still counted so the resting check below doesn't
+							// mistake this stillness for having lost support.
+							if (!otherAsleep && overlap > p.radius * WAKE_OVERLAP_FRACTION) {
+								forcedWake = true;
+							}
+							contactCount = contactCount + 1.0;
+						} else {
+							var normal = coincidentPairNormal(index, otherIndex);
+							if (dist > 0.0001) {
+								normal = delta / dist;
+							}
+							// A sleeping neighbor won't apply its own share back
+							// (it is frozen), so this particle must absorb the
+							// full overlap against it instead of the usual half;
+							// against an awake neighbor, both sides still split
+							// it evenly so they separate fully without a race.
+							let shareFactor = select(0.5, 1.0, otherAsleep);
+							let normalCorrection = normal * (overlap * shareFactor);
+							totalCorrection = totalCorrection + normalCorrection;
+
+							// Coulomb-style positional friction: reduce this
+							// pair's relative tangential travel, bounded by mu
+							// times the normal correction, using the same share
+							// split as the normal correction above.
+							let selfDisplacement = p.pos - p.stepStartPos;
+							let otherDisplacement = other.pos - other.stepStartPos;
+							let relativeDisplacement = selfDisplacement - otherDisplacement;
+							let tangentialDisplacement = relativeDisplacement
+								- normal * dot(relativeDisplacement, normal);
+							let tangentialDistance = length(tangentialDisplacement);
+							if (tangentialDistance > 0.0001) {
+								let frictionDistance = min(
+									tangentialDistance * shareFactor,
+									params.particleFriction * overlap * shareFactor
+								);
+								totalFrictionCorrection = totalFrictionCorrection
+									- tangentialDisplacement / tangentialDistance * frictionDistance;
+							}
+							contactCount = contactCount + 1.0;
 						}
-						contactCount = contactCount + 1.0;
 					}
 				}
 				otherIndex = gridNext[otherIndex];
@@ -204,7 +240,7 @@ fn resolve(@builtin(global_invocation_id) gid: vec3<u32>) {
 		}
 	}
 
-	if (contactCount > 0.0) {
+	if (contactCount > 0.0 && !selfAsleep) {
 		let averaging = 1.0 / contactCount;
 		p.pos = predictedPos
 			+ (totalCorrection + totalFrictionCorrection) * averaging;
@@ -244,6 +280,15 @@ fn resolve(@builtin(global_invocation_id) gid: vec3<u32>) {
 	}
 	p.restTimer = restTimer;
 	p.settled = select(0.0, 1.0, restTimer > 0.12);
+
+	// A hard hit overrides the resting check above: force this particle
+	// back into the active set (from the next iteration/step onward),
+	// regardless of how "resting" it still looks this pass, since it was
+	// frozen and so hasn't actually moved to reflect the impact yet.
+	if (forcedWake) {
+		p.settled = 0.0;
+		p.restTimer = 0.0;
+	}
 
 	particlesWrite[index] = p;
 }
