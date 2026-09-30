@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>Piece</title>
+	<link rel="stylesheet" href="piece.css" />
+</head>
+<body>
+	<main id="experience">
+		<!-- Wrapped together so the disk-entrance animation (disk-entrance.js
+		     adds .revealed here, see piece.css) fades/scales the disk and
+		     whatever stars are on it in as one visual unit, even though
+		     they're drawn to two separate canvases for other reasons
+		     (backdrop vs. WebGPU-rendered stars). -->
+		<div id="sky">
+			<canvas id="disk-canvas"></canvas>
+			<canvas id="pile-canvas"></canvas>
+			<canvas id="overlay-canvas"></canvas>
+		</div>
+		<aside id="margin-text"></aside>
+		<!-- Catches click/tap-to-advance while the poem is still playing out;
+		     scene-director.js's 'begin-interaction' cue turns off its
+		     pointer-events for good, handing the page over to star dragging
+		     (see piece.js). -->
+		<div id="story-advance"></div>
+	</main>
+	<!-- Plain scripts, sharing one global scope (no bundler/module system in
+	     this project) - load order matters and mirrors each file's place in
+	     ARCHITECTURE.md's responsibility table. -->
+	<script src="poem.js"></script>
+	<script src="audio.js"></script>
+	<script src="story.js"></script>
+	<script src="margins.js"></script>
+	<script src="disk-entrance.js"></script>
+	<script src="pile.js"></script>
+	<script src="scene-director.js"></script>
+	<script src="piece.js"></script>
+</body>
+</html>

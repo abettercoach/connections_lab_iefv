@@ -1,0 +1,107 @@
+html, body {
+	margin: 0;
+	height: 100%;
+	background: #ffffff;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	color: #14161c;
+}
+
+#experience {
+	position: relative;
+	width: 100vw;
+	height: 100vh;
+	overflow: hidden;
+}
+
+#sky {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	/* Hidden until scene-director.js's 'reveal-disk' cue adds .revealed (see
+	   revealDisk() in disk-entrance.js) - a simple fade/scale entrance for
+	   the disk and whatever stars are on it together, kept entirely in CSS
+	   so pile.js never needs to know an entrance animation exists. */
+	opacity: 0;
+	transform: scale(0.85);
+	transition: opacity 2400ms ease, transform 2400ms ease;
+}
+
+#sky.revealed {
+	opacity: 1;
+	transform: scale(1);
+}
+
+#disk-canvas {
+	display: block;
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	/* Purely a backdrop: one dark filled circle marking the sky disk,
+	   redrawn only on resize (see drawDiskBackdrop() in pile.js). Sits
+	   behind #pile-canvas so a star rendered outside the disk shows black
+	   against the page's own light background, and a star inside it shows
+	   white against this dark circle - the WebGPU canvas itself is left
+	   transparent so this shows through. */
+	pointer-events: none;
+}
+
+#pile-canvas {
+	display: block;
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+}
+
+#overlay-canvas {
+	display: block;
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	/* Pointer handling stays on #pile-canvas (it's the one WebGPU renders
+	   the actual stars to); this canvas only ever draws breathing
+	   target/drag indicators on top, purely visual, so it must not
+	   intercept drags. */
+	pointer-events: none;
+}
+
+#margin-text {
+	position: absolute;
+	top: 50%;
+	left: 24px;
+	transform: translateY(-50%);
+	max-width: 220px;
+	font-family: Georgia, "Times New Roman", serif;
+	font-style: italic;
+	font-size: 15px;
+	line-height: 1.6;
+	color: #14161c;
+	pointer-events: none;
+}
+
+#margin-text p {
+	margin: 0 0 0.8em;
+}
+
+#story-advance {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	cursor: pointer;
+}
+
+@media (max-width: 640px) {
+	#margin-text {
+		left: 16px;
+		max-width: calc(100% - 32px);
+	}
+}
