@@ -2,7 +2,7 @@
 // dragging, placement, or sky data yet. See ARCHITECTURE.md for the plan
 // this prototype is testing and how it is meant to extend toward "shards."
 
-const PARTICLE_FLOATS = 10; // pos.xy, vel.xy, radius, settled, restTimer, pad, stepStartPos.xy
+const PARTICLE_FLOATS = 10; // pos.xy, vel.xy, radius, settled, restTimer, brightness, stepStartPos.xy
 const PARAMS_FLOATS = 12;
 const WORKGROUP_SIZE = 64;
 const FIXED_DT = 1 / 120;
@@ -10,7 +10,7 @@ const MAX_STEPS_PER_FRAME = 8;
 // One averaged correction pass can't fully untangle a dense pile in one go;
 // running several per fixed step lets overlaps relax out instead of
 // compounding into a collapsed, overlapping mass. See compute-pile.wgsl.
-const SOLVER_ITERATIONS = 4;
+const SOLVER_ITERATIONS = 12;
 const PARTICLE_RADIUS = 1.5;
 const CELL_SIZE = PARTICLE_RADIUS * 2 * 2.2;
 const MAX_SUBSTEPS_PER_STEP = 8;
@@ -21,11 +21,14 @@ const GRAVITY = 1600;
 const DEFAULT_PARTICLE_FRICTION = 1.2;
 const FLOOR_FRICTION = 0.86;
 const WALL_DAMPING = 0.3;
-// Stand-in for the real sky disk: a fixed circular source region particles
-// start inside of, rather than scattered across the full canvas width. Real
-// star positions/sizes come later; this is only shaped like the eventual
-// disk so the fall/pile behavior is tested against something closer to the
-// actual use case.
+// The real fixed sky snapshot this prototype tests against (see
+// ARCHITECTURE.md's "Fixed Sky" section). Stars below the horizon at this
+// moment are excluded entirely, same as the final piece would.
+const OBSERVER_LAT_DEG = 18;
+const OBSERVER_LON_DEG = -(66 + 37 / 60);
+// June 2, 2019, 10:00 p.m. Atlantic Standard Time == June 3, 2019, 02:00 UTC.
+const OBSERVER_INSTANT = new Date('2019-06-03T02:00:00Z');
+// Where the projected sky disk sits on screen, and how large.
 const DISK_RADIUS_FRACTION = 0.28; // of min(canvas.width, canvas.height)
 const DISK_CENTER_Y_FRACTION = 0.32; // of canvas.height, from the top
 
@@ -33,12 +36,11 @@ const canvas = document.querySelector('#pile-canvas');
 const statusLabel = document.querySelector('#status');
 const releaseButton = document.querySelector('#release');
 const resetButton = document.querySelector('#reset');
-const particleCountSelect = document.querySelector('#particle-count');
 const playPauseButton = document.querySelector('#play-pause');
 const stepButton = document.querySelector('#step-once');
 const frameSlider = document.querySelector('#frame-slider');
 const frameLabel = document.querySelector('#frame-label');
-const frictionSlider = document.querySelector('#particle-friction');
+const frictionInput = document.querySelector('#particle-friction');
 const frictionLabel = document.querySelector('#friction-label');
 const inspectButton = document.querySelector('#inspect-frame');
 const diagnosticsOutput = document.querySelector('#diagnostics');
@@ -93,6 +95,16 @@ let maxStepSeen = 0;
 let isPlaying = false;
 let lastSubstepCount = 1;
 let particleFriction = DEFAULT_PARTICLE_FRICTION;
+// Real stars above the horizon at OBSERVER_INSTANT, projected to disk-relative
+// coordinates once at load time (see loadSkyStars()). Fixed for the session:
+// resizing the window rescales the disk, it does not reproject the sky.
+let skyStars = null;
+
+function readyStatusText() {
+	return skyStars
+		? `WebGPU ready. ${skyStars.length} stars above the horizon. Press Release.`
+		: 'WebGPU ready. Press Release.';
+}
 
 async function main() {
 	if (!navigator.gpu) {
@@ -110,7 +122,7 @@ async function main() {
 	device = await adapter.requestDevice();
 	context = canvas.getContext('webgpu');
 	presentationFormat = navigator.gpu.getPreferredCanvasFormat();
-	frictionSlider.value = String(DEFAULT_PARTICLE_FRICTION);
+	frictionInput.value = String(DEFAULT_PARTICLE_FRICTION);
 	frictionLabel.textContent = `grain μ ${DEFAULT_PARTICLE_FRICTION.toFixed(2)}`;
 
 	const shaderSource = await (await fetch('compute-pile.wgsl')).text();
@@ -119,6 +131,12 @@ async function main() {
 	createLayoutsAndPipelines();
 	resizeCanvas();
 	window.addEventListener('resize', resizeCanvas);
+
+	releaseButton.disabled = true;
+	statusLabel.textContent = 'Loading sky catalog…';
+	skyStars = await loadSkyStars('stars.json');
+	statusLabel.textContent = readyStatusText();
+	releaseButton.disabled = false;
 
 	releaseButton.addEventListener('click', releaseParticles);
 	resetButton.addEventListener('click', resetSimulation);
@@ -136,11 +154,11 @@ async function main() {
 		updateInspectButton();
 		scrubToStep(Number(frameSlider.value));
 	});
-	frictionSlider.addEventListener('input', () => {
-		frictionLabel.textContent = `grain μ ${Number(frictionSlider.value).toFixed(2)}`;
+	frictionInput.addEventListener('input', () => {
+		frictionLabel.textContent = `grain μ ${Number(frictionInput.value).toFixed(2)}`;
 	});
-	frictionSlider.addEventListener('change', () => {
-		particleFriction = Number(frictionSlider.value);
+	frictionInput.addEventListener('change', () => {
+		particleFriction = Number(frictionInput.value);
 		writeParams();
 		if (fallingHasStarted) {
 			isPlaying = false;
@@ -150,7 +168,7 @@ async function main() {
 		}
 	});
 
-	statusLabel.textContent = 'WebGPU ready. Press Release.';
+	statusLabel.textContent = readyStatusText();
 	lastFrameAt = performance.now();
 	fpsWindowStart = lastFrameAt;
 	requestAnimationFrame(frame);
@@ -202,7 +220,13 @@ function createLayoutsAndPipelines() {
 		fragment: {
 			module: shaderModule,
 			entryPoint: 'fragmentMain',
-			targets: [{ format: presentationFormat }]
+			targets: [{
+				format: presentationFormat,
+				blend: {
+					color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+					alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' }
+				}
+			}]
 		},
 		primitive: { topology: 'triangle-list' }
 	});
@@ -338,23 +362,126 @@ function rebuildBindGroups() {
 	});
 }
 
+// --- Real sky data (RA/Dec catalog -> disk-relative alt-az projection) ---
+//
+// This mirrors script.js's astronomy math for a fixed observer/instant
+// (duplicated here rather than shared, since this file is a disposable
+// physics prototype; see ARCHITECTURE.md for the eventual shared module).
+
+async function loadSkyStars(url) {
+	const records = await (await fetch(url)).json();
+	const observer = { lat: degToRad(OBSERVER_LAT_DEG), lon: degToRad(OBSERVER_LON_DEG) };
+	const localSiderealTime = siderealTimeRad(OBSERVER_INSTANT, observer.lon);
+	const magnitudes = records.map((record) => Number(record.V));
+	const brightestMagnitude = Math.min(...magnitudes);
+
+	const stars = [];
+	for (let i = 0; i < records.length; i++) {
+		const ra = rightAscensionRad(records[i]);
+		const dec = declinationRad(records[i]);
+		const horizontal = horizontalCoordsFor(ra, dec, observer, localSiderealTime);
+		if (horizontal.altitude < 0) continue; // below the horizon at this moment
+		stars.push({
+			altitude: horizontal.altitude,
+			azimuth: horizontal.azimuth,
+			brightness: starBrightness(magnitudes[i], brightestMagnitude)
+		});
+	}
+	return stars;
+}
+
+// Disk-relative unit offset (before scaling by the on-screen disk radius),
+// with altitude === pi/2 (zenith) at the center and the horizon at the rim.
+function diskOffsetFor(altitude, azimuth) {
+	const radialFraction = 1 - clamp(altitude / (Math.PI / 2), 0, 1);
+	return { x: radialFraction * Math.sin(azimuth), y: -radialFraction * Math.cos(azimuth) };
+}
+
+function starBrightness(magnitude, brightestMagnitude) {
+	const relativeFlux = Math.pow(10, -0.4 * (magnitude - brightestMagnitude));
+	const exposure = 10000;
+	return Math.log1p(exposure * relativeFlux) / Math.log1p(exposure);
+}
+
+function rightAscensionRad(record) {
+	const matches = record.RA.match(/(\d+)h\s*(\d+)m\s*([\d.]+)s/);
+	const hours = Number(matches[1]) + Number(matches[2]) / 60 + Number(matches[3]) / 3600;
+	return degToRad(hours * 15); // 15 degrees per hour of right ascension
+}
+
+function declinationRad(record) {
+	const matches = record.Dec.match(/([+-]?)(\d+)°\s*(\d+)′\s*(\d+)″/);
+	let degrees = Number(matches[2]) + Number(matches[3]) / 60 + Number(matches[4]) / 3600;
+	if (matches[1] === '-') degrees *= -1;
+	return degToRad(degrees);
+}
+
+function horizontalCoordsFor(ra, dec, observer, localSiderealTime) {
+	const hourAngle = mod(localSiderealTime - ra, Math.PI * 2);
+	const sinAltitude = Math.sin(dec) * Math.sin(observer.lat) + Math.cos(dec) * Math.cos(observer.lat) * Math.cos(hourAngle);
+	const altitude = Math.asin(clamp(sinAltitude, -1, 1));
+	const cosAzimuth = (Math.sin(dec) - Math.sin(altitude) * Math.sin(observer.lat)) / (Math.cos(altitude) * Math.cos(observer.lat));
+	let azimuth = Math.acos(clamp(cosAzimuth, -1, 1));
+	if (Math.sin(hourAngle) > 0) azimuth = Math.PI * 2 - azimuth;
+	return { altitude, azimuth };
+}
+
+// Sidereal time formula duplicated verbatim (renamed locals only) from
+// script.js's siderealTime(), so both projections agree on this fixed sky.
+function siderealTimeRad(time, longitudeRad) {
+	let year = time.getUTCFullYear();
+	let month = time.getUTCMonth() + 1;
+	const day = time.getUTCDate();
+	const hour = time.getUTCHours();
+	const minute = time.getUTCMinutes();
+	const second = time.getUTCSeconds();
+	const millisecond = time.getUTCMilliseconds();
+
+	if (month <= 2) {
+		year--;
+		month += 12;
+	}
+
+	const century = Math.floor(year / 100);
+	const correction = 2 - century + Math.floor(century / 4);
+	const julianDate = correction + Math.floor(365.25 * year) + Math.floor(30.6001 * (month + 1)) - 730550.5
+		+ day + (hour + minute / 60 + second / 3600 + millisecond / 3600000) / 24;
+	const julianCenturies = julianDate / 36525;
+
+	let siderealDegrees = 280.46061837 + 360.98564736629 * julianDate + 0.000387933 * julianCenturies ** 2 - julianCenturies ** 3 / 38710000;
+	siderealDegrees = ((siderealDegrees % 360) + 360) % 360;
+
+	let siderealRadians = degToRad(siderealDegrees) + longitudeRad;
+	return mod(siderealRadians, Math.PI * 2);
+}
+
+function degToRad(degrees) {
+	return (degrees * Math.PI) / 180;
+}
+
+function clamp(value, min, max) {
+	return Math.min(max, Math.max(min, value));
+}
+
+function mod(value, modulus) {
+	return ((value % modulus) + modulus) % modulus;
+}
+
 // Builds the initial particle state on the CPU. `identities` (id + visual
 // radius, currently trivial) is kept separate from the physics data on
 // purpose: a future "shard" variant would only need to change identities'
 // shape and the render path, not this simulation data layout.
 //
-// Particles are scattered uniformly inside a fixed circular "disk" region
-// (a stand-in for the real sky disk) rather than across the full canvas
-// width, so the fall/pile behavior can be judged against the actual source
-// shape instead of an artificial full-width curtain.
+// Particles start at their real above-horizon sky positions on the fixed
+// disk (see loadSkyStars()), not a random scatter, so the fall/pile
+// behavior can be judged against the actual source shape and density.
 //
 // initialParticleData is kept around (not discarded) so the frame slider can
 // deterministically re-simulate to any earlier step for scrubbing, without
 // needing to record a snapshot of every frame.
 function releaseParticles() {
-	if (fallingHasStarted) return;
-	numParticles = Number(particleCountSelect.value);
-	particleCountSelect.disabled = true;
+	if (fallingHasStarted || !skyStars) return;
+	numParticles = skyStars.length;
 	createParticleBuffers(numParticles);
 	writeParams();
 	rebuildBindGroups();
@@ -366,12 +493,10 @@ function releaseParticles() {
 	const data = new Float32Array(numParticles * PARTICLE_FLOATS);
 	for (let i = 0; i < numParticles; i++) {
 		const offset = i * PARTICLE_FLOATS;
-		// Uniform disk sampling: sqrt(random) counteracts the bias that would
-		// otherwise cluster points near the center.
-		const r = diskRadius * Math.sqrt(Math.random());
-		const theta = Math.random() * Math.PI * 2;
-		const x = diskCenterX + Math.cos(theta) * r;
-		const y = diskCenterY + Math.sin(theta) * r;
+		const star = skyStars[i];
+		const diskOffset = diskOffsetFor(star.altitude, star.azimuth);
+		const x = diskCenterX + diskOffset.x * diskRadius;
+		const y = diskCenterY + diskOffset.y * diskRadius;
 		data[offset + 0] = x;
 		data[offset + 1] = y;
 		data[offset + 2] = 0;
@@ -379,7 +504,7 @@ function releaseParticles() {
 		data[offset + 4] = PARTICLE_RADIUS;
 		data[offset + 5] = 0;
 		data[offset + 6] = 0;
-		data[offset + 7] = 0;
+		data[offset + 7] = star.brightness;
 		data[offset + 8] = x; // stepStartPos, overwritten each step by integrate()
 		data[offset + 9] = y;
 	}
@@ -414,8 +539,7 @@ function resetSimulation() {
 	currentStepIndex = 0;
 	maxStepSeen = 0;
 	releaseButton.disabled = false;
-	particleCountSelect.disabled = false;
-	statusLabel.textContent = 'WebGPU ready. Press Release.';
+	statusLabel.textContent = readyStatusText();
 	updatePlayPauseLabel();
 	updateFrameSlider();
 	updateInspectButton();
@@ -693,7 +817,7 @@ function updateStatus(now) {
 	}
 	statusLabel.textContent = fallingHasStarted
 		? `${numParticles.toLocaleString()} particles · ${lastFps || '…'} fps${isPlaying ? '' : ' · paused'}`
-		: 'WebGPU ready. Press Release.';
+		: readyStatusText();
 }
 
 main();

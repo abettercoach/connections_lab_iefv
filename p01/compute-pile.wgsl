@@ -10,7 +10,9 @@ struct Particle {
 	radius: f32,
 	settled: f32,
 	restTimer: f32,
-	_pad1: f32,
+	// Rendered opacity only (0-1), e.g. a star's magnitude. Physics never
+	// reads this; it exists purely for fragmentMain.
+	brightness: f32,
 	// Position at the very start of this fixed step, before gravity/movement
 	// or any resolve iteration touched it. Carried unchanged through every
 	// resolve iteration so velocity can be derived, once per step, from the
@@ -250,6 +252,7 @@ struct VertexOut {
 	@builtin(position) position: vec4<f32>,
 	@location(0) localCoord: vec2<f32>,
 	@location(1) settled: f32,
+	@location(2) brightness: f32,
 };
 
 @group(0) @binding(0) var<storage, read> particlesForRender: array<Particle>;
@@ -274,6 +277,7 @@ fn vertexMain(
 	out.position = vec4<f32>(ndcX, ndcY, 0.0, 1.0);
 	out.localCoord = corner;
 	out.settled = p.settled;
+	out.brightness = p.brightness;
 	return out;
 }
 
@@ -281,5 +285,5 @@ fn vertexMain(
 fn fragmentMain(in: VertexOut) -> @location(0) vec4<f32> {
 	let dist = length(in.localCoord);
 	if (dist > 1.0 / 1.4) { discard; }
-	return vec4<f32>(0.98, 0.97, 0.93, 1.0);
+	return vec4<f32>(0.98, 0.97, 0.93, in.brightness);
 }
