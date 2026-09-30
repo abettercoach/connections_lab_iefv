@@ -40,9 +40,8 @@ body {
 	height: 100%;
 	/* Purely a backdrop: one dark filled circle marking the sky disk,
 	   redrawn only on resize (see drawDiskBackdrop() in pile.js). Sits
-	   behind #pile-canvas so a star rendered outside the disk shows black
-	   against the page's own light background, and a star inside it shows
-	   white against this dark circle - the WebGPU canvas itself is left
+	   behind #pile-canvas, faintly lighter than the page's pure black so
+	   the disk's boundary stays visible - the WebGPU canvas itself is left
 	   transparent so this shows through. Hidden (opacity only, never
 	   scaled) until scene-director.js's 'reveal-disk' cue adds .revealed,
 	   which revealDisk() (disk-entrance.js) does only after the stars below

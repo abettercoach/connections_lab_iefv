@@ -8,11 +8,11 @@
 </head>
 <body>
 	<main id="experience">
-		<!-- Wrapped together so the disk-entrance animation (disk-entrance.js
-		     adds .revealed here, see piece.css) fades/scales the disk and
-		     whatever stars are on it in as one visual unit, even though
-		     they're drawn to two separate canvases for other reasons
-		     (backdrop vs. WebGPU-rendered stars). -->
+		<!-- #sky is a plain positioning wrapper; #disk-canvas and
+		     #pile-canvas each own their own independent opacity fade
+		     (disk-entrance.js's revealDisk()/hideDisk(), see piece.css),
+		     drawn to two separate canvases for other reasons (backdrop vs.
+		     WebGPU-rendered stars). -->
 		<div id="sky">
 			<canvas id="disk-canvas"></canvas>
 			<canvas id="pile-canvas"></canvas>

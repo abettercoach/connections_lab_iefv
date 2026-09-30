@@ -71,8 +71,8 @@ struct Params {
 	// A live multiplier on each star's brightness before it drives the
 	// halo/core alpha in fragmentMain (see starSizeFor()/fragmentMain()) -
 	// purely a display/testing aid for judging drag/placement feedback,
-	// not a property of the star data itself. 1.0 reproduces script.js's
-	// original brightness exactly.
+	// not a property of the star data itself. 1.0 is a no-op (each star's
+	// own true brightness, unboosted).
 	brightnessBoost: f32,
 	// How much of the sky has been correctly rebuilt so far: placed stars
 	// / total stars, 0 at the start of the interaction and 1 once every
@@ -81,11 +81,11 @@ struct Params {
 	// and untouched stars ignore this entirely.
 	progress: f32,
 	// 0.0 (interaction-pile-test.js's debug page): stars are colored by
-	// disk membership, as script.js's original piece did - white within
-	// the disk, black once fallen outside it, against that page's white
-	// background. 1.0 (pile.js, the real piece - see piece.css's night-mode
-	// body): the page background stays dark for the whole experience, so a
-	// fallen star must stay white to remain visible - see fragmentMain().
+	// disk membership - white within the disk, black once fallen outside
+	// it, against that page's white background. 1.0 (pile.js, the real
+	// piece - see piece.css's night-mode body): the page background stays
+	// dark for the whole experience, so a fallen star must stay white to
+	// remain visible - see fragmentMain().
 	starsAlwaysLight: f32,
 };
 
@@ -374,8 +374,7 @@ struct VertexOut {
 	@builtin(position) position: vec4<f32>,
 	// In pixels, relative to this star's own center - not normalized -
 	// so fragmentMain can compare distances directly against starSize
-	// below (matches script.js's draw_star(), which sizes its layered
-	// circles in real pixels too).
+	// below (its layered halo/core circles are sized in real pixels too).
 	@location(0) localCoord: vec2<f32>,
 	@location(1) settled: f32,
 	@location(2) brightness: f32,
@@ -395,9 +394,8 @@ struct VertexOut {
 @group(0) @binding(0) var<storage, read> particlesForRender: array<Particle>;
 @group(0) @binding(1) var<uniform> renderParams: Params;
 
-// Mirrors script.js's draw_star(): starSize grows gently with brightness
-// (a barely-visible star and the brightest star in the sky differ in size,
-// not just alpha).
+// starSize grows gently with brightness (a barely-visible star and the
+// brightest star in the sky differ in size, not just alpha).
 fn starSizeFor(brightness: f32) -> f32 {
 	return 1.1 + brightness * 0.9;
 }
@@ -438,12 +436,12 @@ fn highlightedBrightness(brightness: f32, picked: f32, placed: f32) -> f32 {
 }
 
 // Once brightness saturates near 1.0, alpha has nowhere left to go - a
-// pixel can't get more opaque than opaque. script.js's own glow reads as
-// "brighter" past that point by widening the halo, not by trying to make
-// already-white pixels whiter, so the extra brightness the boost adds
-// (beyond the star's own unboosted brightness) grows the halo's radius
-// instead. When boosted == brightness (no highlight active) this is
-// exactly zero, so the unboosted look is unchanged.
+// pixel can't get more opaque than opaque. A glow reads as "brighter" past
+// that point by widening the halo, not by trying to make already-white
+// pixels whiter, so the extra brightness the boost adds (beyond the star's
+// own unboosted brightness) grows the halo's radius instead. When
+// boosted == brightness (no highlight active) this is exactly zero, so
+// the unboosted look is unchanged.
 const HALO_GROWTH: f32 = 3.0;
 fn haloRadiusMulFor(brightness: f32, boosted: f32) -> f32 {
 	let extraGlow = boosted - brightness;
@@ -523,12 +521,12 @@ fn fragmentMain(in: VertexOut) -> @location(0) vec4<f32> {
 	let boostedBrightness = highlightedBrightness(in.brightness, in.picked, in.placed);
 	let haloRadiusMul = haloRadiusMulFor(in.brightness, boostedBrightness);
 
-	// Brightness only matters as an in-sky glow (script.js's layered
-	// halo + core circles, reproduced here): a dim star sits faint against
-	// the night sky, same as the original piece. Once fallen outside the
-	// disk, it is dust rather than a point of starlight, and reads clearly
-	// against the page background only if fully opaque - so brightness no
-	// longer modulates opacity out there, it is simply a solid dot.
+	// Brightness only matters as an in-sky glow (a layered halo + core
+	// circle): a dim star sits faint against the night sky. Once fallen
+	// outside the disk, it is dust rather than a point of starlight, and
+	// reads clearly against the page background only if fully opaque - so
+	// brightness no longer modulates opacity out there, it is simply a
+	// solid dot.
 	let haloAlpha = radialGlowAlpha(dist, in.starSize * haloRadiusMul) * (1.0 + boostedBrightness * 9.0) / 255.0;
 	let coreAlpha = softCircleAlpha(dist, in.starSize * 0.5, feather)
 		* min(1.0, (18.0 + boostedBrightness * 237.0) / 255.0);

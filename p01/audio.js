@@ -4,7 +4,8 @@
 // playback rules differ (one-shot vs. looped-and-layered, and who is
 // allowed to stop what):
 //   - placement sound: a single random recording, played once, on a
-//     correct drop (see interaction-pile-test.js's endDrag()).
+//     correct drop (triggered via pile.js's setOnStarPlaced() hook, called
+//     from piece.js - see endDrag() in pile.js).
 //   - ambient soundscape: several random recordings, looped and layered
 //     together, eased in when the visitor comes out (see poem.js's
 //     'fade-audio-in' cue) and faded out (not a hard cut) the moment the

@@ -1,7 +1,8 @@
 // Interaction spike (WebGPU): fall + pile, then pick a settled star and
-// drag it back to where it belongs. See ARCHITECTURE.md for the plan this
-// prototype is testing. Deliberately kept apart from compute-pile-test.js
-// (the falling/piling reference) so that file stays untouched.
+// drag it back to where it belongs. This is the standalone debug/reference
+// page - it keeps its own toggle-button UI and its original white-page/
+// black-dust visual, deliberately left alone as the real piece (pile.js/
+// piece.html) evolved around it.
 //
 // Concerns are kept in separate sections below, in the order that data
 // flows through them each frame:
@@ -35,8 +36,9 @@ const MAX_TRAVEL_PER_SUBSTEP = PARTICLE_RADIUS;
 const UNIFORM_BUFFER_ALIGNMENT = 256;
 const SUBSTEP_PARAM_SLOT_COUNT = MAX_SUBSTEPS_PER_STEP * (MAX_SUBSTEPS_PER_STEP + 1) / 2;
 const GRAVITY = 1600;
-// Settled, not a debug control here - see ARCHITECTURE.md's compute-shader
-// experiment log for how this value (and the physics it tunes) was found.
+// Settled, not a debug control here - see ARCHITECTURE.md's "Retired
+// experiments" section for how this value (and the physics it tunes) was
+// found.
 const PARTICLE_FRICTION = 1.2;
 const FLOOR_FRICTION = 0.86;
 const WALL_DAMPING = 0.3;
@@ -417,9 +419,10 @@ function rebuildBindGroups() {
 
 // --- Real sky data (RA/Dec catalog -> disk-relative alt-az projection) ---
 //
-// This mirrors script.js's astronomy math for a fixed observer/instant
-// (duplicated here rather than shared, since this file is a disposable
-// physics prototype; see ARCHITECTURE.md for the eventual shared module).
+// Astronomy math (RA/Dec parsing, sidereal time, alt-az projection) is
+// duplicated between this file and pile.js rather than shared, since this
+// file is a standalone debug page kept deliberately independent of the
+// real piece - see the file header above.
 
 async function loadSkyStars(url) {
 	const records = await (await fetch(url)).json();
@@ -492,7 +495,7 @@ function horizontalCoordsFor(ra, dec, observer, localSiderealTime) {
 }
 
 // Sidereal time formula duplicated verbatim (renamed locals only) from
-// script.js's siderealTime(), so both projections agree on this fixed sky.
+// pile.js's siderealTimeRad(), so both projections agree on this fixed sky.
 function siderealTimeRad(time, longitudeRad) {
 	let year = time.getUTCFullYear();
 	let month = time.getUTCMonth() + 1;

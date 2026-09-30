@@ -45,8 +45,9 @@ const MAX_TRAVEL_PER_SUBSTEP = PARTICLE_RADIUS;
 const UNIFORM_BUFFER_ALIGNMENT = 256;
 const SUBSTEP_PARAM_SLOT_COUNT = MAX_SUBSTEPS_PER_STEP * (MAX_SUBSTEPS_PER_STEP + 1) / 2;
 const GRAVITY = 1600;
-// Settled, not a debug control here - see ARCHITECTURE.md's compute-shader
-// experiment log for how this value (and the physics it tunes) was found.
+// Settled, not a debug control here - see ARCHITECTURE.md's "Retired
+// experiments" section for how this value (and the physics it tunes) was
+// found.
 const PARTICLE_FRICTION = 1.2;
 const FLOOR_FRICTION = 0.86;
 const WALL_DAMPING = 0.3;
@@ -405,9 +406,10 @@ function rebuildBindGroups() {
 
 // --- Real sky data (RA/Dec catalog -> disk-relative alt-az projection) ---
 //
-// This mirrors script.js's astronomy math for a fixed observer/instant
-// (duplicated here rather than shared, since this file is a disposable
-// physics prototype; see ARCHITECTURE.md for the eventual shared module).
+// Astronomy math (RA/Dec parsing, sidereal time, alt-az projection) is
+// duplicated between this file and interaction-pile-test.js rather than
+// shared - that file is a standalone debug page kept deliberately
+// independent of this one (see its own file header).
 
 async function loadSkyStars(url) {
 	const records = await (await fetch(url)).json();
@@ -485,8 +487,9 @@ function horizontalCoordsFor(ra, dec, observer, localSiderealTime) {
 	return { altitude, azimuth };
 }
 
-// Sidereal time formula duplicated verbatim (renamed locals only) from
-// script.js's siderealTime(), so both projections agree on this fixed sky.
+// Sidereal time formula duplicated verbatim (renamed locals only) between
+// this file and interaction-pile-test.js's own siderealTimeRad(), so both
+// projections agree on this fixed sky.
 function siderealTimeRad(time, longitudeRad) {
 	let year = time.getUTCFullYear();
 	let month = time.getUTCMonth() + 1;
