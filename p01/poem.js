@@ -27,9 +27,9 @@ const POEM_BEATS = [
 	{
 		lines: [
 			'these were the stars over my childhood home,',
-			'that night, when my spouse and I travelled',
+			'that night my spouse and I travelled',
 			'from our home New York to my parents\' in Minnesota,',
-			'and tell them we were queer and we were married.'
+			'to tell them we were queer and we were married.'
 		],
 		cues: ['reveal-disk']
 	},
@@ -37,7 +37,7 @@ const POEM_BEATS = [
 		// Two stanzas shown together as one beat.
 		lines: [
 			'It took me years to accept that they',
-			'came out to me the same night as bigots',
+			'came out to us the same night too, as bigots',
 			'',
 			'heaven fell atop a felled home',
 			'and the song that put my child self to sleep',

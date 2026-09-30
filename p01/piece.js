@@ -23,7 +23,9 @@ async function initPiece() {
 			return [];
 		})
 	]);
-	sceneState.recordings = recordings;
+	// Only nighttime recordings suit this piece's night sky - see
+	// nighttimeRecordings() in audio.js.
+	sceneState.recordings = nighttimeRecordings(recordings);
 
 	if (!pileReady) {
 		console.error('WebGPU unavailable - the piece cannot run.');

@@ -20,6 +20,25 @@ async function loadRecordings(url) {
 	return xenoCantoRecordings;
 }
 
+// Keeps only recordings logged with a local time before 6:00 a.m. or at/after
+// 6:00 p.m. - a plain clock-hour cutoff, not a real sunrise/sunset
+// calculation (xeno-canto's "time" field is the recordist's local clock
+// time, not tied to that location's actual day length). A recording with
+// no time, or one xeno-canto couldn't parse (e.g. "?"), is dropped rather
+// than guessed at.
+const NIGHT_START_HOUR = 18;
+const NIGHT_END_HOUR = 6;
+function isNighttimeRecording(recording) {
+	const match = /^(\d{1,2}):(\d{2})$/.exec(recording.time || '');
+	if (!match) return false;
+	const hour = Number(match[1]);
+	return hour >= NIGHT_START_HOUR || hour < NIGHT_END_HOUR;
+}
+
+function nighttimeRecordings(recordings) {
+	return recordings.filter(isNighttimeRecording);
+}
+
 function randomDistinctRecordings(recordings, count) {
 	const pool = recordings.slice();
 	const picked = [];
