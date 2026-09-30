@@ -4,7 +4,7 @@ A poem-driven piece: the fixed sky over Ponce, Puerto Rico appears on a black
 disk, falls off it into a pile, and the visitor drags each star back to where
 it belongs while a poem unfolds in the page margins.
 
-Play it at `piece.html`.
+Play it at `index.html`.
 
 ## Fixed sky
 

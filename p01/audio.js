@@ -15,6 +15,11 @@
 
 let xenoCantoRecordings = null;
 
+// Master volume ceiling for all playback below (ambient and placement
+// alike) - 0.7 rather than each Audio's natural 1.0, turned down 30% from
+// xeno-canto's original recording levels.
+const MASTER_VOLUME = 0.7;
+
 async function loadRecordings(url) {
 	const data = await (await fetch(url)).json();
 	xenoCantoRecordings = Array.isArray(data.recordings) ? data.recordings : [];
@@ -59,6 +64,7 @@ async function playRandomPlacementRecording(recordings) {
 	const recording = recordings[Math.floor(Math.random() * recordings.length)];
 	if (!placementAudio) placementAudio = new Audio();
 	placementAudio.src = recording.file;
+	placementAudio.volume = MASTER_VOLUME;
 	try {
 		await placementAudio.play();
 	} catch (error) {
@@ -110,7 +116,7 @@ function startAmbientSoundscape(recordings, count) {
 	ambientAudioElements = chosen.map((recording) => {
 		const audio = new Audio(recording.file);
 		audio.loop = true;
-		audio.volume = 1;
+		audio.volume = MASTER_VOLUME;
 		audio.play().catch((error) => {
 			console.error('Ambient soundscape layer failed to play.', error);
 		});
@@ -133,7 +139,7 @@ function fadeInAmbientSoundscape(recordings, count, durationMs) {
 		});
 		return audio;
 	});
-	fadeAmbientVolume(0, 1, durationMs, () => {});
+	fadeAmbientVolume(0, MASTER_VOLUME, durationMs, () => {});
 }
 
 function stopAmbientSoundscape() {
@@ -153,7 +159,7 @@ function stopAmbientSoundscape() {
 
 function fadeOutAmbientSoundscape(durationMs) {
 	const layers = ambientAudioElements;
-	fadeAmbientVolume(1, 0, durationMs, () => {
+	fadeAmbientVolume(MASTER_VOLUME, 0, durationMs, () => {
 		for (const audio of layers) {
 			audio.pause();
 			audio.currentTime = 0;
