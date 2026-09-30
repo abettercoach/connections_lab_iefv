@@ -28,7 +28,7 @@ const POEM_BEATS = [
 		lines: [
 			'these were the stars over my childhood home,',
 			'that night my spouse and I travelled',
-			'from our home New York to my parents\' in Minnesota,',
+			'from our home in New York to my parents\' in Minnesota,',
 			'to tell them we were queer and we were married.'
 		],
 		cues: ['reveal-disk']
