@@ -37,11 +37,12 @@ const PARTICLE_FRICTION = 1.2;
 const FLOOR_FRICTION = 0.86;
 const WALL_DAMPING = 0.3;
 // Used as an exponent (1 - (1-brightness)^boost), not a multiplier - see
-// fragmentMain() in interaction-pile.wgsl. At 1.0 it's a no-op: the sky
+// fragmentMain() in interaction-pile.wgsl. Fixed at 1.0 (a no-op): the sky
 // renders at true brightness, and only the automatic sparse->full curve for
-// placed stars (placedBrightnessExponent()) provides any boost. Turn this
-// up only to manually test extra boost on top of that curve.
-const DEFAULT_BRIGHTNESS_BOOST = 1;
+// picked/placed stars (highlightedBrightness()) provides any boost.
+// No longer user-adjustable - the manual test slider was removed once that
+// curve covered its purpose; bump this directly here if more boost is needed.
+const BRIGHTNESS_BOOST = 1;
 // The real fixed sky snapshot this prototype tests against (see
 // ARCHITECTURE.md's "Fixed Sky" section). Stars below the horizon at this
 // moment are excluded entirely, same as the final piece would.
@@ -63,12 +64,7 @@ const diskCanvas = document.querySelector('#disk-canvas');
 const diskCtx = diskCanvas.getContext('2d');
 const overlayCanvas = document.querySelector('#overlay-canvas');
 const overlayCtx = overlayCanvas.getContext('2d');
-const statusLabel = document.querySelector('#status');
-const placementStatusLabel = document.querySelector('#placement-status');
-const releaseButton = document.querySelector('#release');
-const resetButton = document.querySelector('#reset');
-const brightnessInput = document.querySelector('#brightness-boost');
-const brightnessLabel = document.querySelector('#brightness-label');
+const toggleButton = document.querySelector('#toggle-release');
 
 let device = null;
 let context = null;
@@ -104,12 +100,8 @@ let stepParityIsEven = true;
 let isFalling = false;
 let physicsAccumulator = 0;
 let lastFrameAt = 0;
-let frameCount = 0;
-let fpsWindowStart = 0;
-let lastFps = 0;
 let lastSubstepCount = 1;
 let totalStepsSinceRelease = 0;
-let brightnessBoost = DEFAULT_BRIGHTNESS_BOOST;
 // Real stars above the horizon at OBSERVER_INSTANT, projected to disk-relative
 // coordinates once at load time (see loadSkyStars()). Fixed for the session:
 // resizing the window rescales the disk, it does not reproject the sky.
@@ -121,31 +113,24 @@ let diskCenterX = 0;
 let diskCenterY = 0;
 let diskRadius = 0;
 
-function readyStatusText() {
-	return skyStars
-		? `WebGPU ready. ${skyStars.length} stars above the horizon. Press Release.`
-		: 'WebGPU ready. Press Release.';
-}
-
-
 async function main() {
 	if (!navigator.gpu) {
-		statusLabel.textContent = 'WebGPU is not supported in this browser.';
-		releaseButton.disabled = true;
+		console.error('WebGPU is not supported in this browser.');
+		toggleButton.disabled = true;
+		toggleButton.textContent = 'WebGPU unavailable';
 		return;
 	}
 
 	const adapter = await navigator.gpu.requestAdapter();
 	if (!adapter) {
-		statusLabel.textContent = 'No WebGPU adapter available.';
-		releaseButton.disabled = true;
+		console.error('No WebGPU adapter available.');
+		toggleButton.disabled = true;
+		toggleButton.textContent = 'WebGPU unavailable';
 		return;
 	}
 	device = await adapter.requestDevice();
 	context = canvas.getContext('webgpu');
 	presentationFormat = navigator.gpu.getPreferredCanvasFormat();
-	brightnessInput.value = String(DEFAULT_BRIGHTNESS_BOOST);
-	brightnessLabel.textContent = `${DEFAULT_BRIGHTNESS_BOOST.toFixed(1)}`;
 
 	const shaderSource = await (await fetch('interaction-pile.wgsl')).text();
 	shaderModule = device.createShaderModule({ code: shaderSource });
@@ -154,12 +139,10 @@ async function main() {
 	resizeCanvas();
 	window.addEventListener('resize', resizeCanvas);
 
-	releaseButton.disabled = true;
-	statusLabel.textContent = 'Loading sky catalog…';
+	updateToggleButton();
 	skyStars = await loadSkyStars('stars.json');
 	layOutStarsOnDisk();
-	statusLabel.textContent = readyStatusText();
-	releaseButton.disabled = false;
+	updateToggleButton();
 
 	// Fetched once, up front, so the first successful placement's sound
 	// isn't delayed behind a network request for the recording index.
@@ -167,21 +150,37 @@ async function main() {
 		console.error('Failed to load xeno-canto recordings.', error);
 	});
 
-	releaseButton.addEventListener('click', releaseParticles);
-	resetButton.addEventListener('click', resetSimulation);
-	brightnessInput.addEventListener('input', () => {
-		brightnessBoost = Number(brightnessInput.value);
-		brightnessLabel.textContent = `${brightnessBoost.toFixed(1)}`;
-		writeParams();
-	});
-
+	toggleButton.addEventListener('click', handleToggleClick);
 	attachPointerHandlers();
+	updateCursor();
 
-	statusLabel.textContent = readyStatusText();
 	lastFrameAt = performance.now();
-	fpsWindowStart = lastFrameAt;
 	requestAnimationFrame(frame);
 }
+
+// The single Release/Reset control: its meaning (and label) follows
+// isFalling directly, so there is never ambiguity about which action it
+// currently performs.
+function handleToggleClick() {
+	if (isFalling) {
+		resetSimulation();
+	} else {
+		releaseParticles();
+	}
+	updateToggleButton();
+	updateCursor();
+}
+
+function updateToggleButton() {
+	if (!skyStars) {
+		toggleButton.disabled = true;
+		toggleButton.textContent = 'Loading…';
+		return;
+	}
+	toggleButton.disabled = false;
+	toggleButton.textContent = isFalling ? 'Reset' : 'Release';
+}
+
 
 function createLayoutsAndPipelines() {
 	computeBindGroupLayout = device.createBindGroupLayout({
@@ -203,8 +202,9 @@ function createLayoutsAndPipelines() {
 			{
 				binding: 1,
 				// Both stages: vertexMain positions/sizes each star, and
-				// fragmentMain now also reads renderParams.brightnessBoost
-				// for the brightness slider (see interaction-pile.wgsl).
+				// fragmentMain also reads renderParams.brightnessBoost and
+				// .progress for the placement brightness curve (see
+				// interaction-pile.wgsl).
 				visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
 				buffer: { type: 'uniform' }
 			}
@@ -321,7 +321,7 @@ function writeParams() {
 		dt, GRAVITY, canvas.width, canvas.height,
 		PARTICLE_RADIUS, CELL_SIZE, gridW, gridH,
 		PARTICLE_FRICTION, numParticles, FLOOR_FRICTION, WALL_DAMPING,
-		diskCenterX, diskCenterY, diskRadius, brightnessBoost,
+		diskCenterX, diskCenterY, diskRadius, BRIGHTNESS_BOOST,
 		currentPlacementProgress()
 	]);
 	device.queue.writeBuffer(paramsBuffer, 0, makeParams(FIXED_DT));
@@ -532,18 +532,11 @@ function initPlacement(count, targets) {
 		dragY: 0,
 		pickPending: false // guards overlapping hit-test readbacks
 	};
-	updatePlacementStatus();
-}
-
-function updatePlacementStatus() {
-	placementStatusLabel.textContent = placement
-		? `${placement.placedCount} / ${placement.count} placed`
-		: '';
 }
 
 // How much of the sky has been correctly rebuilt so far (0 at the start of
 // the interaction, 1 once every star is home). Read by writeParams() each
-// frame - see interaction-pile.wgsl's placedBrightnessExponent().
+// frame - see interaction-pile.wgsl's highlightedBrightness().
 function currentPlacementProgress() {
 	return placement && placement.count > 0 ? placement.placedCount / placement.count : 0;
 }
@@ -601,7 +594,12 @@ async function tryPickStarAt(x, y) {
 				bestIndex = i;
 			}
 		}
-		if (bestIndex >= 0 && placement.dragIndex < 0) beginDrag(bestIndex, x, y);
+		if (bestIndex >= 0 && placement.dragIndex < 0) {
+			// The star is grabbed from directly under the pointer (x, y), but
+			// begins its drag already offset into a corner - see beginDrag().
+			const dragPos = offsetIntoCorner(x, y);
+			beginDrag(bestIndex, dragPos.x, dragPos.y);
+		}
 	} finally {
 		placement.pickPending = false;
 	}
@@ -616,6 +614,7 @@ function beginDrag(index, x, y) {
 	// frozen for physics and JS positions it directly (see below).
 	device.queue.writeBuffer(buffer, (index * PARTICLE_FLOATS + 10) * 4, new Float32Array([1]));
 	writeDraggedParticlePosition();
+	updateCursor();
 }
 
 function updateDrag(x, y) {
@@ -651,7 +650,7 @@ function endDrag(x, y) {
 		device.queue.writeBuffer(buffer, posOffset, new Float32Array([targetX, targetY, 0, 0]));
 		device.queue.writeBuffer(buffer, flagsOffset, new Float32Array([0, 1])); // picked=0, placed=1
 		placement.placedCount++;
-		writeParams(); // refresh progress so placedBrightnessExponent() sees it
+		writeParams(); // refresh progress so highlightedBrightness() sees it
 		playRandomBirdsong();
 	} else {
 		// Wrong spot: release it back into falling physics from right here.
@@ -665,7 +664,7 @@ function endDrag(x, y) {
 	}
 
 	placement.dragIndex = -1;
-	updatePlacementStatus();
+	updateCursor();
 }
 
 function pointerCanvasPos(event) {
@@ -674,6 +673,36 @@ function pointerCanvasPos(event) {
 		x: (event.clientX - rect.left) * (canvas.width / rect.width),
 		y: (event.clientY - rect.top) * (canvas.height / rect.height)
 	};
+}
+
+// Where a dragged star is actually drawn, relative to the pointer: up and
+// to the right, into a corner clear of the hand/fist cursor, so the star
+// stays visible under the cursor's own hand instead of being hidden by it.
+// Expressed in CSS pixels and converted using the canvas's own CSS-to-pixel
+// scale, so it looks like the same physical offset regardless of canvas
+// resolution/DPI.
+const DRAG_OFFSET_CSS_PX = { x: -6, y: -6 };
+
+function offsetIntoCorner(x, y) {
+	const rect = canvas.getBoundingClientRect();
+	return {
+		x: x + DRAG_OFFSET_CSS_PX.x * (canvas.width / rect.width),
+		y: y + DRAG_OFFSET_CSS_PX.y * (canvas.height / rect.height)
+	};
+}
+
+// The pile-canvas cursor: an open hand while a star can be picked up
+// (isFalling - stars are on the ground, not still on the frozen disk), a
+// closed fist while one is actually being held, and the plain pointer
+// otherwise (nothing to grab yet, e.g. before Release).
+function updateCursor() {
+	if (placement && placement.dragIndex >= 0) {
+		canvas.style.cursor = 'grabbing';
+	} else if (isFalling) {
+		canvas.style.cursor = 'grab';
+	} else {
+		canvas.style.cursor = 'default';
+	}
 }
 
 function attachPointerHandlers() {
@@ -687,12 +716,14 @@ function attachPointerHandlers() {
 	window.addEventListener('pointermove', (event) => {
 		if (!placement || placement.dragIndex < 0) return;
 		const pos = pointerCanvasPos(event);
-		updateDrag(pos.x, pos.y);
+		const dragPos = offsetIntoCorner(pos.x, pos.y);
+		updateDrag(dragPos.x, dragPos.y);
 	});
 	window.addEventListener('pointerup', (event) => {
 		if (!placement || placement.dragIndex < 0) return;
 		const pos = pointerCanvasPos(event);
-		endDrag(pos.x, pos.y);
+		const dragPos = offsetIntoCorner(pos.x, pos.y);
+		endDrag(dragPos.x, dragPos.y);
 	});
 	window.addEventListener('pointercancel', () => {
 		// An interrupted gesture is treated as a drop right where it was
@@ -702,7 +733,7 @@ function attachPointerHandlers() {
 	});
 }
 
-// --- Animation: the pulsing "this is where it goes" indicator --------------
+// --- Animation: the "this is where it goes" indicator ----------------------
 //
 // Purely visual, drawn on a 2D overlay canvas layered on top of the WebGPU
 // canvas (see interaction-pile-test.css). Reads placement state; never
@@ -714,28 +745,73 @@ function drawOverlay(now) {
 	const index = placement.dragIndex;
 	const targetX = placement.targets[index * 2];
 	const targetY = placement.targets[index * 2 + 1];
-	drawPulseRings(targetX, targetY, now);
+	drawBreathingRings(targetX, targetY, now, RING_COLOR_ON_DISK);
+	// The star being carried gets a softer cue than the target's rings - a
+	// gradient halo that breathes in place, so the two indicators don't read
+	// as identical/interchangeable: rings mean "aim here", the halo means
+	// "this is what you're holding". The star travels across both the dark
+	// disk and the white page, so its halo color has to flip to stay visible
+	// on whichever it's currently over.
+	const overDisk = insideDiskRadius(placement.dragX, placement.dragY);
+	drawBreathingHalo(placement.dragX, placement.dragY, now, overDisk ? HALO_COLOR_ON_DISK : HALO_COLOR_ON_PAGE);
 }
 
-function drawPulseRings(x, y, now) {
-	const periodMs = 1200;
-	const ringCount = 3;
-	const maxRadiusPx = 26;
-	for (let i = 0; i < ringCount; i++) {
-		const phase = mod(now + (i * periodMs) / ringCount, periodMs) / periodMs;
-		const radius = 4 + phase * maxRadiusPx;
-		const alpha = (1 - phase) * 0.6;
+function insideDiskRadius(x, y) {
+	const dx = x - diskCenterX;
+	const dy = y - diskCenterY;
+	return dx * dx + dy * dy <= diskRadius * diskRadius;
+}
+
+// Two concentric rings that slowly swell and ease back, in place - a
+// "breathe", not a pulse: nothing travels outward or repeats in a loop of
+// discrete beats, it just continuously grows and shrinks a little. Deliberately
+// slow (a full inhale+exhale takes BREATHE_PERIOD_MS) and steady, so it reads
+// as a calm indicator rather than an urgent one, with no fixed center mark -
+// the rings themselves are the only cue for where the star belongs.
+const BREATHE_PERIOD_MS = 5200;
+const BREATHE_RING_BASE_RADII = [9, 17];
+const BREATHE_AMPLITUDE_PX = 4;
+const RING_COLOR_ON_DISK = '241, 238, 231'; // off-white, reads against the dark disk
+const RING_COLOR_ON_PAGE = '40, 40, 40'; // dark gray, reads against the white page
+
+function drawBreathingRings(x, y, now, colorRgb) {
+	// 0 -> 1 -> 0 smoothly across the period, via a raised cosine rather than
+	// a sawtooth, so the growth/shrink itself eases in and out like breathing
+	// rather than ticking linearly and snapping at the loop point.
+	const phase = mod(now, BREATHE_PERIOD_MS) / BREATHE_PERIOD_MS;
+	const breathe = (1 - Math.cos(phase * Math.PI * 2)) / 2;
+	for (const baseRadius of BREATHE_RING_BASE_RADII) {
+		const radius = baseRadius + breathe * BREATHE_AMPLITUDE_PX;
+		const alpha = 0.2 + breathe * 0.35;
 		overlayCtx.beginPath();
 		overlayCtx.arc(x, y, radius, 0, Math.PI * 2);
-		overlayCtx.strokeStyle = `rgba(241, 238, 231, ${alpha.toFixed(3)})`;
+		overlayCtx.strokeStyle = `rgba(${colorRgb}, ${alpha.toFixed(3)})`;
 		overlayCtx.lineWidth = 1.5;
 		overlayCtx.stroke();
 	}
-	// A small steady dot marks the exact target, so it's precise - not just
-	// "somewhere inside the pulse".
+}
+
+// A soft radial gradient - not a ring outline - that swells and eases back
+// with the same breathing rhythm as the target's rings. No hard edge
+// anywhere: it's a smooth falloff from the center out to fully transparent,
+// so it reads as a glow around the star rather than a shape of its own.
+const HALO_BASE_RADIUS = 10;
+const HALO_AMPLITUDE_PX = 3;
+const HALO_PEAK_ALPHA = 0.4;
+const HALO_COLOR_ON_DISK = '255, 255, 255';
+const HALO_COLOR_ON_PAGE = '20, 20, 20';
+
+function drawBreathingHalo(x, y, now, colorRgb) {
+	const phase = mod(now, BREATHE_PERIOD_MS) / BREATHE_PERIOD_MS;
+	const breathe = (1 - Math.cos(phase * Math.PI * 2)) / 2;
+	const radius = HALO_BASE_RADIUS + breathe * HALO_AMPLITUDE_PX;
+	const peakAlpha = HALO_PEAK_ALPHA * (0.6 + breathe * 0.4);
+	const gradient = overlayCtx.createRadialGradient(x, y, 0, x, y, radius);
+	gradient.addColorStop(0, `rgba(${colorRgb}, ${peakAlpha.toFixed(3)})`);
+	gradient.addColorStop(1, `rgba(${colorRgb}, 0)`);
+	overlayCtx.fillStyle = gradient;
 	overlayCtx.beginPath();
-	overlayCtx.arc(x, y, 2, 0, Math.PI * 2);
-	overlayCtx.fillStyle = 'rgba(241, 238, 231, 0.9)';
+	overlayCtx.arc(x, y, radius, 0, Math.PI * 2);
 	overlayCtx.fill();
 }
 
@@ -821,7 +897,6 @@ function layOutStarsOnDisk() {
 	lastSubstepCount = 1;
 	totalStepsSinceRelease = 0;
 	isFalling = false;
-	releaseButton.disabled = false;
 	initPlacement(numParticles, targets);
 	writeParams(); // reset progress to 0 for the new/reset layout
 }
@@ -842,7 +917,6 @@ function releaseParticles() {
 	lastSubstepCount = 1;
 	totalStepsSinceRelease = 0;
 	isFalling = true;
-	releaseButton.disabled = true;
 }
 
 // Puts every star back on the disk, as if Release had never been pressed -
@@ -954,20 +1028,7 @@ function frame(now) {
 	device.queue.submit([encoder.finish()]);
 
 	drawOverlay(now);
-	updateStatus(now);
 	requestAnimationFrame(frame);
-}
-
-function updateStatus(now) {
-	frameCount++;
-	if (now - fpsWindowStart >= 500) {
-		lastFps = Math.round((frameCount * 1000) / (now - fpsWindowStart));
-		frameCount = 0;
-		fpsWindowStart = now;
-	}
-	statusLabel.textContent = numParticles > 0
-		? `${numParticles.toLocaleString()} particles · ${lastFps || '…'} fps`
-		: readyStatusText();
 }
 
 main();

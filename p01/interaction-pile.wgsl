@@ -63,8 +63,8 @@ struct Params {
 	// How much of the sky has been correctly rebuilt so far: placed stars
 	// / total stars, 0 at the start of the interaction and 1 once every
 	// star is home. Drives the "sparse -> full" brightness curve for
-	// p.placed stars only (see placedBrightnessExponent()) - unplaced
-	// stars ignore this entirely.
+	// placed stars only (see highlightedBrightness()) - picked (dragged)
+	// and untouched stars ignore this entirely.
 	progress: f32,
 };
 
@@ -365,8 +365,9 @@ struct VertexOut {
 	@location(3) insideDisk: f32,
 	@location(4) starSize: f32,
 	// Passed through so fragmentMain can gate the sparse->full progress
-	// curve to correctly-placed stars only (see placedBrightnessExponent()).
+	// curve to the placement feedback loop (see highlightedBrightness()).
 	@location(5) placed: f32,
+	@location(6) picked: f32,
 };
 
 @group(0) @binding(0) var<storage, read> particlesForRender: array<Particle>;
@@ -379,44 +380,51 @@ fn starSizeFor(brightness: f32) -> f32 {
 	return 1.1 + brightness * 0.9;
 }
 
-// A straight multiply-then-clamp runs out of headroom fast: most stars'
-// brightness is log-compressed and small, so x*boost saturates at 1.0
-// only for stars that were already fairly bright, leaving dim stars dim
-// no matter how high the exponent goes. Using it as an exponent instead
-// (screen-blend style) keeps pushing dim stars towards 1.0 as it grows,
-// without a hard ceiling on the brightness value itself.
-fn boostedBrightnessFor(brightness: f32, exponent: f32) -> f32 {
-	return 1.0 - pow(1.0 - brightness, exponent);
-}
-
 // A star that has just been dropped into its correct spot needs to read
 // unmistakably - "yes, that's it" - regardless of how faint its true
 // magnitude is, especially while only a handful of stars are placed and
 // there is nothing else nearby to compare it against. As more of the sky
-// is rebuilt, that same star eases back down to its true brightness, so
-// the finished sky reads as the real, unevenly-lit night sky rather than
-// a field of uniformly bright dots. Stars that were never picked up (the
-// original, untouched disk view before Release) are not "placed" and
-// always render at their true brightness - this curve is deliberately
-// scoped to the placement feedback loop, not the whole sky.
-const SPARSE_PLACED_BOOST: f32 = 14.0;
-fn placedBrightnessExponent(placed: f32) -> f32 {
-	let progressExponent = mix(SPARSE_PLACED_BOOST, 1.0, renderParams.progress);
+// is rebuilt, a placed star eases back down to its true brightness, so the
+// finished sky reads as the real, unevenly-lit night sky rather than a
+// field of uniformly bright dots. A star actively being dragged gets its
+// own, separate always-max treatment: it hasn't settled into the sky yet,
+// so there's no "sky filling in" to ease against while it's still in your
+// hand. Stars that were never picked up (the original, untouched disk view
+// before Release) are neither picked nor placed and always render at their
+// true brightness - none of this is scoped beyond the placement feedback
+// loop.
+//
+// This blends the *displayed* brightness value directly (mix towards 1.0),
+// rather than pushing the true brightness through an exponent - an
+// exponent curve (1-(1-brightness)^N) can't reliably lift the very
+// faintest stars to full brightness with any single fixed N, since the
+// exponent needed to rescue a value scales with 1/brightness: a star with
+// brightness 0.0001 would need an exponent in the tens of thousands, far
+// beyond what a mid-brightness star needs. Mixing towards 1.0 directly has
+// no such blind spot - it reaches exactly 1.0 regardless of how faint the
+// underlying star is.
+fn highlightedBrightness(brightness: f32, picked: f32, placed: f32) -> f32 {
+	var boosted = brightness;
+	if (picked > 0.5) {
+		boosted = 1.0;
+	} else if (placed > 0.5) {
+		boosted = mix(1.0, brightness, renderParams.progress);
+	}
 	// The brightness slider stays available as a manual multiplier on top
 	// of this automatic curve, for testing - see interaction-pile-test.js.
-	return select(1.0, progressExponent, placed > 0.5) * renderParams.brightnessBoost;
+	return boosted * renderParams.brightnessBoost;
 }
 
-// Once boostedBrightness saturates near 1.0, alpha has nowhere left to
-// go - a pixel can't get more opaque than opaque. script.js's own glow
-// reads as "brighter" past that point by widening the halo, not by
-// trying to make already-white pixels whiter, so the extra brightness
-// the boost adds (beyond the star's own unboosted brightness) grows the
-// halo's radius instead. At exponent == 1 this is exactly zero, so the
-// unboosted look is unchanged.
+// Once brightness saturates near 1.0, alpha has nowhere left to go - a
+// pixel can't get more opaque than opaque. script.js's own glow reads as
+// "brighter" past that point by widening the halo, not by trying to make
+// already-white pixels whiter, so the extra brightness the boost adds
+// (beyond the star's own unboosted brightness) grows the halo's radius
+// instead. When boosted == brightness (no highlight active) this is
+// exactly zero, so the unboosted look is unchanged.
 const HALO_GROWTH: f32 = 3.0;
-fn haloRadiusMulFor(brightness: f32, exponent: f32) -> f32 {
-	let extraGlow = boostedBrightnessFor(brightness, exponent) - brightness;
+fn haloRadiusMulFor(brightness: f32, boosted: f32) -> f32 {
+	let extraGlow = boosted - brightness;
 	return 1.1 + extraGlow * HALO_GROWTH;
 }
 
@@ -432,8 +440,8 @@ fn vertexMain(
 	let corner = corners[vertexIndex];
 	let p = particlesForRender[instanceIndex];
 	let starSize = starSizeFor(p.brightness);
-	let brightnessExponent = placedBrightnessExponent(p.placed);
-	let haloRadiusMul = haloRadiusMulFor(p.brightness, brightnessExponent);
+	let boostedBrightness = highlightedBrightness(p.brightness, p.picked, p.placed);
+	let haloRadiusMul = haloRadiusMulFor(p.brightness, boostedBrightness);
 	let quadHalfSize = starSize * haloRadiusMul + 1.5;
 	let worldPos = p.pos + corner * quadHalfSize;
 	let ndcX = (worldPos.x / renderParams.width) * 2.0 - 1.0;
@@ -450,6 +458,7 @@ fn vertexMain(
 	out.insideDisk = select(0.0, 1.0, distFromDiskCenter <= renderParams.diskRadius);
 	out.starSize = starSize;
 	out.placed = p.placed;
+	out.picked = p.picked;
 	return out;
 }
 
@@ -472,9 +481,8 @@ fn softCircleAlpha(distance: f32, radius: f32, featherPx: f32) -> f32 {
 fn fragmentMain(in: VertexOut) -> @location(0) vec4<f32> {
 	let dist = length(in.localCoord);
 	let feather = 1.0;
-	let brightnessExponent = placedBrightnessExponent(in.placed);
-	let boostedBrightness = boostedBrightnessFor(in.brightness, brightnessExponent);
-	let haloRadiusMul = haloRadiusMulFor(in.brightness, brightnessExponent);
+	let boostedBrightness = highlightedBrightness(in.brightness, in.picked, in.placed);
+	let haloRadiusMul = haloRadiusMulFor(in.brightness, boostedBrightness);
 
 	// Brightness only matters as an in-sky glow (script.js's layered
 	// halo + core circles, reproduced here): a dim star sits faint against
