@@ -1,11 +1,12 @@
 // Disk entrance: the two-stage animation for the sky's first appearance,
 // triggered by scene-director.js's 'reveal-disk' cue. Stage 1: the settled
-// stars fade in (opacity only, never scaled) against the still-dark page.
-// Stage 2, once stage 1 finishes: the disk fades in (opacity only) and the
-// page itself flips from night (white text on black) to day (see body/
-// body.day in piece.css). Kept entirely CSS/class-driven so pile.js's own
-// drawing of the disk backdrop and stars never needs to know an entrance
-// animation exists.
+// stars fade in (opacity only, never scaled) against the dark page. Stage
+// 2, once stage 1 finishes: the disk fades in (opacity only) too. The page
+// itself stays dark for the whole experience (see piece.css) - this used
+// to also flip the page to a light "day" background here, but that's no
+// longer part of the piece. Kept entirely CSS/class-driven so pile.js's
+// own drawing of the disk backdrop and stars never needs to know an
+// entrance animation exists.
 
 // Kept in sync with #pile-canvas's transition-duration in piece.css - the
 // point of this constant is purely to know *when* stage 1 has finished so
@@ -19,7 +20,6 @@ function revealDisk() {
 	if (pileCanvas) pileCanvas.classList.add('stars-in');
 	stageTwoTimeout = setTimeout(() => {
 		stageTwoTimeout = null;
-		document.body.classList.add('day');
 		const diskCanvas = document.querySelector('#disk-canvas');
 		if (diskCanvas) diskCanvas.classList.add('revealed');
 	}, STAR_FADE_IN_MS);
@@ -37,7 +37,6 @@ function hideDisk() {
 		clearTimeout(stageTwoTimeout);
 		stageTwoTimeout = null;
 	}
-	document.body.classList.remove('day');
 	const diskCanvas = document.querySelector('#disk-canvas');
 	if (diskCanvas) diskCanvas.classList.remove('revealed');
 	const pileCanvas = document.querySelector('#pile-canvas');

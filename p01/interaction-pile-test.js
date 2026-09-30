@@ -15,8 +15,12 @@
 //   - Sound: picks and plays a random xeno-canto recording. Called only
 //     from placement's "correct drop" transition.
 
-const PARTICLE_FLOATS = 14; // pos.xy, vel.xy, radius, settled, restTimer, brightness, stepStartPos.xy, picked, placed, targetPos.xy
-const PARAMS_FLOATS = 17;
+// 16, not 15: WGSL pads the Particle struct up to a multiple of its
+// largest member's alignment (the vec2<f32> fields force 8 bytes), so the
+// real per-particle stride is 64 bytes/16 floats even though only 15 are
+// meaningful - see _pad0 in interaction-pile.wgsl's Particle struct.
+const PARTICLE_FLOATS = 16; // pos.xy, vel.xy, radius, settled, restTimer, brightness, stepStartPos.xy, picked, placed, targetPos.xy, temperature, pad
+const PARAMS_FLOATS = 18;
 const WORKGROUP_SIZE = 64;
 const FIXED_DT = 1 / 120;
 const MAX_STEPS_PER_FRAME = 8;
@@ -322,7 +326,10 @@ function writeParams() {
 		PARTICLE_RADIUS, CELL_SIZE, gridW, gridH,
 		PARTICLE_FRICTION, numParticles, FLOOR_FRICTION, WALL_DAMPING,
 		diskCenterX, diskCenterY, diskRadius, BRIGHTNESS_BOOST,
-		currentPlacementProgress()
+		currentPlacementProgress(),
+		// This debug page keeps the original white-page/black-dust look -
+		// see the Params struct comment in interaction-pile.wgsl.
+		0.0
 	]);
 	device.queue.writeBuffer(paramsBuffer, 0, makeParams(FIXED_DT));
 
@@ -430,10 +437,22 @@ async function loadSkyStars(url) {
 		stars.push({
 			altitude: horizontal.altitude,
 			azimuth: horizontal.azimuth,
-			brightness: starBrightness(magnitudes[i], brightestMagnitude)
+			brightness: starBrightness(magnitudes[i], brightestMagnitude),
+			temperature: starTemperatureFraction(Number(records[i].K))
 		});
 	}
 	return stars;
+}
+
+// Normalizes a star's catalog temperature (Kelvin, the 'K' field) to 0-1
+// for fragmentMain's warm/neutral/cool tint - see pile.js's copy of this
+// function for the fuller explanation; duplicated here rather than shared,
+// same as the rest of this file's astronomy math.
+const COOL_TEMPERATURE_K = 3000;
+const HOT_TEMPERATURE_K = 12000;
+function starTemperatureFraction(kelvin) {
+	if (!Number.isFinite(kelvin) || kelvin <= 0) return 0.5; // sun-like default
+	return clamp((kelvin - COOL_TEMPERATURE_K) / (HOT_TEMPERATURE_K - COOL_TEMPERATURE_K), 0, 1);
 }
 
 // Disk-relative unit offset (before scaling by the on-screen disk radius),
@@ -867,6 +886,7 @@ function buildParticleData(startSettled) {
 		data[offset + 11] = 0; // placed
 		data[offset + 12] = x; // targetPos, physics never reads this
 		data[offset + 13] = y;
+		data[offset + 14] = star.temperature;
 		targets[i * 2] = x;
 		targets[i * 2 + 1] = y;
 	}

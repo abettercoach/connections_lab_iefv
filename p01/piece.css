@@ -5,20 +5,12 @@ html, body {
 }
 
 body {
-	/* Opens on a plain night: white poem text on a black page, before the
-	   disk or any stars exist. scene-director.js's 'reveal-disk' cue plays a
-	   two-stage entrance (see revealDisk() in disk-entrance.js): the stars
-	   fade in first against this dark background, and only once that's
-	   done does the disk fade in and this flip to .day. Stepping back past
-	   that beat (undoCue()'s hideDisk()) removes .day again. */
+	/* Stays dark for the whole experience: white poem text on a black
+	   page. scene-director.js's 'reveal-disk' cue plays a two-stage
+	   entrance against this unchanging background (see revealDisk() in
+	   disk-entrance.js) - the stars fade in first, then the disk. */
 	background: #000000;
 	color: #ffffff;
-	transition: background 2400ms ease, color 2400ms ease;
-}
-
-body.day {
-	background: #ffffff;
-	color: #14161c;
 }
 
 #experience {
@@ -102,10 +94,10 @@ body.day {
 	top: 50%;
 	left: 24px;
 	transform: translateY(-50%);
-	max-width: 220px;
+	max-width: 280px;
 	font-family: Georgia, "Times New Roman", serif;
 	font-style: italic;
-	font-size: 15px;
+	font-size: 19px;
 	line-height: 1.6;
 	color: inherit;
 	pointer-events: none;

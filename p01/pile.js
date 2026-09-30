@@ -25,8 +25,12 @@
 //   - Animation/rendering (2D overlay): the breathing target/drag
 //     indicators. Reads placement state, never writes it.
 
-const PARTICLE_FLOATS = 14; // pos.xy, vel.xy, radius, settled, restTimer, brightness, stepStartPos.xy, picked, placed, targetPos.xy
-const PARAMS_FLOATS = 17;
+// 16, not 15: WGSL pads the Particle struct up to a multiple of its
+// largest member's alignment (the vec2<f32> fields force 8 bytes), so the
+// real per-particle stride is 64 bytes/16 floats even though only 15 are
+// meaningful - see _pad0 in interaction-pile.wgsl's Particle struct.
+const PARTICLE_FLOATS = 16; // pos.xy, vel.xy, radius, settled, restTimer, brightness, stepStartPos.xy, picked, placed, targetPos.xy, temperature, pad
+const PARAMS_FLOATS = 18;
 const WORKGROUP_SIZE = 64;
 const FIXED_DT = 1 / 120;
 const MAX_STEPS_PER_FRAME = 8;
@@ -61,8 +65,8 @@ const OBSERVER_LON_DEG = -(66 + 37 / 60);
 // June 2, 2019, 10:00 p.m. Atlantic Standard Time == June 3, 2019, 02:00 UTC.
 const OBSERVER_INSTANT = new Date('2019-06-03T02:00:00Z');
 // Where the projected sky disk sits on screen, and how large.
-const DISK_RADIUS_FRACTION = 0.28; // of min(canvas.width, canvas.height)
-const DISK_CENTER_Y_FRACTION = 0.32; // of canvas.height, from the top
+const DISK_RADIUS_FRACTION = 0.4; // of min(canvas.width, canvas.height)
+const DISK_CENTER_Y_FRACTION = 0.5; // of canvas.height, from the top
 // How close (in pixels) a drop must land to a star's true position to count
 // as correctly placed, and how close a click/tap must land to a settled
 // star's center to pick it up.
@@ -266,15 +270,16 @@ function resizeCanvas() {
 
 // Static backdrop: one dark filled circle marking the fixed sky disk. Drawn
 // once per resize (not per animation frame) since it never itself moves or
-// animates - only the stars on top of it do.
+// animates - only the stars on top of it do. Darker than the page's own
+// black background (see piece.css) so the disk's boundary stays visible
+// once its fade-in finishes, rather than disappearing into the page.
 function drawDiskBackdrop() {
 	diskCtx.clearRect(0, 0, diskCanvas.width, diskCanvas.height);
 	diskCtx.beginPath();
 	diskCtx.arc(diskCenterX, diskCenterY, diskRadius, 0, Math.PI * 2);
-	diskCtx.fillStyle = '#0c0e13';
+	diskCtx.fillStyle = '#020204';
 	diskCtx.fill();
 }
-
 function createGridBuffers() {
 	const numCells = gridW * gridH;
 	gridHeadBuffer = device.createBuffer({
@@ -308,7 +313,11 @@ function writeParams() {
 		PARTICLE_RADIUS, CELL_SIZE, gridW, gridH,
 		PARTICLE_FRICTION, numParticles, FLOOR_FRICTION, WALL_DAMPING,
 		diskCenterX, diskCenterY, diskRadius, BRIGHTNESS_BOOST,
-		currentPlacementProgress()
+		currentPlacementProgress(),
+		// The piece's page background stays dark for the whole experience
+		// (see piece.css) - see the Params struct comment in
+		// interaction-pile.wgsl for what this controls.
+		1.0
 	]);
 	device.queue.writeBuffer(paramsBuffer, 0, makeParams(FIXED_DT));
 
@@ -416,10 +425,28 @@ async function loadSkyStars(url) {
 		stars.push({
 			altitude: horizontal.altitude,
 			azimuth: horizontal.azimuth,
-			brightness: starBrightness(magnitudes[i], brightestMagnitude)
+			brightness: starBrightness(magnitudes[i], brightestMagnitude),
+			temperature: starTemperatureFraction(Number(records[i].K))
 		});
 	}
 	return stars;
+}
+
+// Normalizes a star's catalog temperature (Kelvin, the 'K' field - the
+// catalog's own bolometric estimate, not a color index this file derives
+// itself) to 0-1 for fragmentMain's warm/neutral/cool tint (see
+// starColorForTemperature() in interaction-pile.wgsl). The catalog's real
+// range runs roughly 2300K-48000K, but nearly all of the perceptible color
+// shift happens well within that: clamping to a narrower practical window
+// keeps the rare, extreme ends from just flattening out at pure red/blue
+// with no further gradient beyond them. A star missing this field (the
+// catalog has exactly one) reads as sun-like neutral rather than crashing
+// or defaulting to an arbitrary hue.
+const COOL_TEMPERATURE_K = 3000;
+const HOT_TEMPERATURE_K = 12000;
+function starTemperatureFraction(kelvin) {
+	if (!Number.isFinite(kelvin) || kelvin <= 0) return 0.5; // sun-like default
+	return clamp((kelvin - COOL_TEMPERATURE_K) / (HOT_TEMPERATURE_K - COOL_TEMPERATURE_K), 0, 1);
 }
 
 // Disk-relative unit offset (before scaling by the on-screen disk radius),
@@ -831,6 +858,7 @@ function buildParticleData(startSettled) {
 		data[offset + 11] = 0; // placed
 		data[offset + 12] = x; // targetPos, physics never reads this
 		data[offset + 13] = y;
+		data[offset + 14] = star.temperature;
 		targets[i * 2] = x;
 		targets[i * 2 + 1] = y;
 	}

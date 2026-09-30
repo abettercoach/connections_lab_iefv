@@ -30,6 +30,20 @@ struct Particle {
 	// This star's correct on-disk position (its position before falling).
 	// Physics never reads this; JS uses it only to judge a drop's placement.
 	targetPos: vec2<f32>,
+	// This star's catalog temperature, normalized 0 (cool/red) to 1
+	// (hot/blue) by starTemperatureFraction() in pile.js. Physics never
+	// reads this either; it exists purely for fragmentMain's color tint.
+	temperature: f32,
+	// Explicit padding: every vec2<f32> member above forces this struct's
+	// alignment to 8 bytes, so its size must round up to a multiple of 8.
+	// Without this, the struct would silently pad itself to 64 bytes
+	// anyway (15 floats = 60 bytes, rounded up), but the JS-side buffer
+	// (a plain, tightly packed Float32Array) would keep writing particles
+	// 15 floats apart - a stride mismatch that reads every particle after
+	// the first from the wrong offset. Naming the pad explicitly keeps the
+	// WGSL layout and PARTICLE_FLOATS in pile.js/interaction-pile-test.js
+	// (both 16) honest about the real per-particle stride.
+	_pad0: f32,
 };
 
 // All-f32 to keep the JS-side buffer a single Float32Array; integer fields
@@ -66,6 +80,13 @@ struct Params {
 	// placed stars only (see highlightedBrightness()) - picked (dragged)
 	// and untouched stars ignore this entirely.
 	progress: f32,
+	// 0.0 (interaction-pile-test.js's debug page): stars are colored by
+	// disk membership, as script.js's original piece did - white within
+	// the disk, black once fallen outside it, against that page's white
+	// background. 1.0 (pile.js, the real piece - see piece.css's night-mode
+	// body): the page background stays dark for the whole experience, so a
+	// fallen star must stay white to remain visible - see fragmentMain().
+	starsAlwaysLight: f32,
 };
 
 @group(0) @binding(0) var<storage, read> particlesRead: array<Particle>;
@@ -368,6 +389,7 @@ struct VertexOut {
 	// curve to the placement feedback loop (see highlightedBrightness()).
 	@location(5) placed: f32,
 	@location(6) picked: f32,
+	@location(7) temperature: f32,
 };
 
 @group(0) @binding(0) var<storage, read> particlesForRender: array<Particle>;
@@ -459,6 +481,7 @@ fn vertexMain(
 	out.starSize = starSize;
 	out.placed = p.placed;
 	out.picked = p.picked;
+	out.temperature = p.temperature;
 	return out;
 }
 
@@ -475,6 +498,22 @@ fn radialGlowAlpha(distance: f32, radius: f32) -> f32 {
 
 fn softCircleAlpha(distance: f32, radius: f32, featherPx: f32) -> f32 {
 	return 1.0 - smoothstep(radius - featherPx, radius, distance);
+}
+
+// Cool (low-temperature) stars read warm/reddish, hot stars read cool
+// blue-white, with a neutral near-white at the midpoint - roughly the
+// real, if exaggerated, color range of starlight. t is the 0-1 value
+// starTemperatureFraction() computes from a star's catalog Kelvin value
+// (see pile.js); the three anchor colors are picked by eye, not derived
+// from a physical blackbody model.
+fn starColorForTemperature(t: f32) -> vec3<f32> {
+	let warm = vec3<f32>(1.0, 0.75, 0.55);
+	let neutral = vec3<f32>(0.98, 0.97, 0.93);
+	let cool = vec3<f32>(0.75, 0.85, 1.0);
+	if (t < 0.5) {
+		return mix(warm, neutral, t * 2.0);
+	}
+	return mix(neutral, cool, (t - 0.5) * 2.0);
 }
 
 @fragment
@@ -503,10 +542,15 @@ fn fragmentMain(in: VertexOut) -> @location(0) vec4<f32> {
 
 	// White within the disk (a real star, seen against the night sky);
 	// black once fallen outside it (dust, no longer "lit" by the sky it
-	// belongs to). Output premultiplied (color * alpha): the canvas is
-	// configured with alphaMode: 'premultiplied' (see interaction-pile-test.js)
-	// so the disk backdrop canvas underneath shows through correctly.
-	let color = mix(vec3<f32>(0.0, 0.0, 0.0), vec3<f32>(0.98, 0.97, 0.93), in.insideDisk);
+	// belongs to, read against a light page) - unless starsAlwaysLight
+	// overrides that (see its comment on the Params struct above), in
+	// which case a star stays white outside the disk too, since there is
+	// no light page for a black dot to read against. Output premultiplied
+	// (color * alpha): the canvas is configured with
+	// alphaMode: 'premultiplied' (see interaction-pile-test.js) so the disk
+	// backdrop canvas underneath shows through correctly.
+	let isLight = max(in.insideDisk, renderParams.starsAlwaysLight);
+	let color = mix(vec3<f32>(0.0, 0.0, 0.0), starColorForTemperature(in.temperature), isLight);
 	return vec4<f32>(color * alpha, alpha);
 }
 
