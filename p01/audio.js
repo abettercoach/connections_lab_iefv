@@ -18,7 +18,7 @@ let xenoCantoRecordings = null;
 // Master volume ceiling for all playback below (ambient and placement
 // alike) - 0.7 rather than each Audio's natural 1.0, turned down 30% from
 // xeno-canto's original recording levels.
-const MASTER_VOLUME = 0.7;
+const MASTER_VOLUME = 0.1;
 
 async function loadRecordings(url) {
 	const data = await (await fetch(url)).json();
