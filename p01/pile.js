@@ -1,10 +1,9 @@
-// Pile: the reusable WebGPU fall/pile/drag-to-place simulation and
-// renderer, extracted from the interaction-pile-test.js spike so the real
-// piece (piece.js) and the standalone test page can both drive it. This
-// file owns physics, placement mechanics, and drawing; it does not own the
-// story (when stars are allowed to appear or fall - see scene-director.js)
-// or audio (it only calls the onStarPlaced hook below; it never touches
-// xeno-canto itself - see audio.js).
+// Pile: the WebGPU fall/pile/drag-to-place simulation and renderer that
+// drives the piece (piece.js). This file owns physics, placement
+// mechanics, and drawing; it does not own the story (when stars are
+// allowed to appear or fall - see scene-director.js) or audio (it only
+// calls the onStarPlaced hook below; it never touches xeno-canto itself -
+// see audio.js).
 //
 // Public entry points, called by whatever wires this module up:
 //   initPile()         - one-time GPU/canvas setup; loads the sky catalog;
@@ -30,7 +29,7 @@
 // real per-particle stride is 64 bytes/16 floats even though only 15 are
 // meaningful - see _pad0 in interaction-pile.wgsl's Particle struct.
 const PARTICLE_FLOATS = 16; // pos.xy, vel.xy, radius, settled, restTimer, brightness, stepStartPos.xy, picked, placed, targetPos.xy, temperature, pad
-const PARAMS_FLOATS = 18;
+const PARAMS_FLOATS = 17;
 const WORKGROUP_SIZE = 64;
 const FIXED_DT = 1 / 120;
 const MAX_STEPS_PER_FRAME = 8;
@@ -314,11 +313,7 @@ function writeParams() {
 		PARTICLE_RADIUS, CELL_SIZE, gridW, gridH,
 		PARTICLE_FRICTION, numParticles, FLOOR_FRICTION, WALL_DAMPING,
 		diskCenterX, diskCenterY, diskRadius, BRIGHTNESS_BOOST,
-		currentPlacementProgress(),
-		// The piece's page background stays dark for the whole experience
-		// (see piece.css) - see the Params struct comment in
-		// interaction-pile.wgsl for what this controls.
-		1.0
+		currentPlacementProgress()
 	]);
 	device.queue.writeBuffer(paramsBuffer, 0, makeParams(FIXED_DT));
 
@@ -405,11 +400,6 @@ function rebuildBindGroups() {
 }
 
 // --- Real sky data (RA/Dec catalog -> disk-relative alt-az projection) ---
-//
-// Astronomy math (RA/Dec parsing, sidereal time, alt-az projection) is
-// duplicated between this file and interaction-pile-test.js rather than
-// shared - that file is a standalone debug page kept deliberately
-// independent of this one (see its own file header).
 
 async function loadSkyStars(url) {
 	const records = await (await fetch(url)).json();
@@ -487,9 +477,6 @@ function horizontalCoordsFor(ra, dec, observer, localSiderealTime) {
 	return { altitude, azimuth };
 }
 
-// Sidereal time formula duplicated verbatim (renamed locals only) between
-// this file and interaction-pile-test.js's own siderealTimeRad(), so both
-// projections agree on this fixed sky.
 function siderealTimeRad(time, longitudeRad) {
 	let year = time.getUTCFullYear();
 	let month = time.getUTCMonth() + 1;
@@ -752,8 +739,8 @@ function attachPointerHandlers() {
 // --- Animation: the "this is where it goes" indicator ----------------------
 //
 // Purely visual, drawn on a 2D overlay canvas layered on top of the WebGPU
-// canvas (see interaction-pile-test.css). Reads placement state; never
-// writes it, and never touches GPU buffers.
+// canvas (see piece.css). Reads placement state; never writes it, and
+// never touches GPU buffers.
 
 function drawOverlay(now) {
 	overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);

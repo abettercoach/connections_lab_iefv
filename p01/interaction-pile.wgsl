@@ -1,4 +1,5 @@
-// Compute-shader falling/piling spike.
+// Compute-shader falling/piling simulation, driving the piece's night sky
+// (pile.js).
 //
 // Particle state is intentionally physics-generic: position, velocity,
 // radius, and a settled flag. Anything about a particle's meaning (star vs.
@@ -20,9 +21,9 @@ struct Particle {
 	// guessed from contact-normal angles.
 	stepStartPos: vec2<f32>,
 	// True while the user is dragging this particle. JS writes pos directly
-	// each frame (see interaction-pile-test.js); physics never moves a
-	// picked particle itself, but it still collides with (and can nudge)
-	// everything around it, same as a settled particle would.
+	// each frame (see pile.js's beginDrag()/updateDrag()); physics never
+	// moves a picked particle itself, but it still collides with (and can
+	// nudge) everything around it, same as a settled particle would.
 	picked: f32,
 	// True once correctly placed. Like settled, but permanent: a placed
 	// particle never wakes back up, even from a hard nearby impact.
@@ -40,9 +41,9 @@ struct Particle {
 	// anyway (15 floats = 60 bytes, rounded up), but the JS-side buffer
 	// (a plain, tightly packed Float32Array) would keep writing particles
 	// 15 floats apart - a stride mismatch that reads every particle after
-	// the first from the wrong offset. Naming the pad explicitly keeps the
-	// WGSL layout and PARTICLE_FLOATS in pile.js/interaction-pile-test.js
-	// (both 16) honest about the real per-particle stride.
+	// the first from the wrong offset. Naming the pad explicitly keeps
+	// this struct's layout and PARTICLE_FLOATS in pile.js (16) honest
+	// about the real per-particle stride.
 	_pad0: f32,
 };
 
@@ -63,8 +64,9 @@ struct Params {
 	wallDamping: f32,
 	// The fixed sky disk's on-screen circle. Physics never reads these
 	// (falling stars pass straight through the disk's edge); fragmentMain
-	// uses them only to decide a star's rendered color: white within the
-	// disk, black once it has fallen outside it.
+	// uses them only to shape a fallen star's alpha differently once
+	// outside the disk (a solid dust dot rather than a glowing point of
+	// starlight) - see insideDisk on VertexOut below.
 	diskCenterX: f32,
 	diskCenterY: f32,
 	diskRadius: f32,
@@ -80,13 +82,6 @@ struct Params {
 	// placed stars only (see highlightedBrightness()) - picked (dragged)
 	// and untouched stars ignore this entirely.
 	progress: f32,
-	// 0.0 (interaction-pile-test.js's debug page): stars are colored by
-	// disk membership - white within the disk, black once fallen outside
-	// it, against that page's white background. 1.0 (pile.js, the real
-	// piece - see piece.css's night-mode body): the page background stays
-	// dark for the whole experience, so a fallen star must stay white to
-	// remain visible - see fragmentMain().
-	starsAlwaysLight: f32,
 };
 
 @group(0) @binding(0) var<storage, read> particlesRead: array<Particle>;
@@ -430,8 +425,8 @@ fn highlightedBrightness(brightness: f32, picked: f32, placed: f32) -> f32 {
 	} else if (placed > 0.5) {
 		boosted = mix(1.0, brightness, renderParams.progress);
 	}
-	// The brightness slider stays available as a manual multiplier on top
-	// of this automatic curve, for testing - see interaction-pile-test.js.
+	// brightnessBoost stays available as a manual multiplier on top of this
+	// automatic curve - see BRIGHTNESS_BOOST in pile.js.
 	return boosted * renderParams.brightnessBoost;
 }
 
@@ -532,23 +527,21 @@ fn fragmentMain(in: VertexOut) -> @location(0) vec4<f32> {
 		* min(1.0, (18.0 + boostedBrightness * 237.0) / 255.0);
 	let insideDiskAlpha = max(haloAlpha, coreAlpha);
 	// Dust (fallen, unplaced stars) always reads as a solid, slightly
-	// larger dot regardless of brightness or progress - it's meant to look
-	// unmistakably like a pile of dark matter, not a faint point of light.
+	// larger dot regardless of brightness or progress, rather than a
+	// glowing point of starlight - alpha shape is all that distinguishes
+	// it; its color (below) stays the same as it was in the sky.
 	let outsideDiskAlpha = softCircleAlpha(dist, in.starSize * 0.9, feather);
 	let alpha = mix(outsideDiskAlpha, insideDiskAlpha, in.insideDisk);
 	if (alpha <= 0.0) { discard; }
 
-	// White within the disk (a real star, seen against the night sky);
-	// black once fallen outside it (dust, no longer "lit" by the sky it
-	// belongs to, read against a light page) - unless starsAlwaysLight
-	// overrides that (see its comment on the Params struct above), in
-	// which case a star stays white outside the disk too, since there is
-	// no light page for a black dot to read against. Output premultiplied
-	// (color * alpha): the canvas is configured with
-	// alphaMode: 'premultiplied' (see interaction-pile-test.js) so the disk
-	// backdrop canvas underneath shows through correctly.
-	let isLight = max(in.insideDisk, renderParams.starsAlwaysLight);
-	let color = mix(vec3<f32>(0.0, 0.0, 0.0), starColorForTemperature(in.temperature), isLight);
+	// A star keeps its own temperature-tinted color whether it's still in
+	// the sky or has fallen into the pile - the page background stays
+	// dark for the whole experience (see piece.css), so there's no need to
+	// darken a fallen star to read against a lighter page. Output
+	// premultiplied (color * alpha): the canvas is configured with
+	// alphaMode: 'premultiplied' so the disk backdrop canvas underneath
+	// shows through correctly.
+	let color = starColorForTemperature(in.temperature);
 	return vec4<f32>(color * alpha, alpha);
 }
 

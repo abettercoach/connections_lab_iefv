@@ -4,10 +4,7 @@ A poem-driven piece: the fixed sky over Ponce, Puerto Rico appears on a black
 disk, falls off it into a pile, and the visitor drags each star back to where
 it belongs while a poem unfolds in the page margins.
 
-Play it at `piece.html`. There is also a standalone debug page,
-`interaction-pile-test.html`, used throughout development to test physics
-changes in isolation from the story/audio/poem system - see "The debug page"
-below.
+Play it at `piece.html`.
 
 ## Fixed sky
 
@@ -89,12 +86,10 @@ physics has no notion of "this particle is a star."
 - **Temperature** (`stars.json`'s `K`/Kelvin field, normalized 0-1 by
   `starTemperatureFraction()`) tints each star along a
   warm/neutral/cool gradient (`starColorForTemperature()` in the shader) -
-  an aesthetic approximation, not a real blackbody-radiation model.
-- **`starsAlwaysLight`** is a page-level (not per-star) uniform flag: `1.0`
-  in `pile.js` keeps a fallen star white forever, since the real piece's page
-  background stays black for the whole experience; `0.0` in
-  `interaction-pile-test.js` preserves that page's original behavior (white
-  within the disk, black once fallen, against its own white page).
+  an aesthetic approximation, not a real blackbody-radiation model. A star
+  keeps this color whether it's still in the sky or has fallen into the
+  pile; the page background stays black for the whole experience, so
+  there's no need to darken a fallen star to read against a lighter page.
 - A star being dragged or freshly placed is temporarily boosted to full
   brightness as placement feedback (see `highlightedBrightness()`), easing
   back down to its true brightness as more of the sky is rebuilt.
@@ -131,18 +126,6 @@ Both draw only from `nighttimeRecordings()` - recordings xeno-canto logged
 with a local clock time before 6:00 a.m. or at/after 6:00 p.m. (a plain
 hour cutoff, not a real sunrise/sunset calculation; a recording with a
 missing or unparseable time is dropped rather than guessed at).
-
-## The debug page
-
-`interaction-pile-test.html`/`.css`/`.js` is a standalone page, independent of
-the poem/story/audio system, used to test pile physics changes safely without
-touching the real piece. It has its own toggle-button UI (fall/reset) instead
-of story-driven cues, and keeps the sky disk's *original* look (white stars
-within the disk, black dust once fallen, against a plain white page) rather
-than the real piece's permanently-dark page. Its astronomy math (RA/Dec
-parsing, sidereal time, alt-az projection) is duplicated from `pile.js` rather
-than shared, since the two files are meant to be able to change independently
-of each other.
 
 ## Retired experiments
 
@@ -192,5 +175,16 @@ with real pairwise collision via a spatial grid, look organic and run at
 frame rate - all particles through the same update, at the same fidelity, in
 parallel, directly avoiding the earlier "two visibly different materials"
 seam. Once that held up, drag/placement mechanics were layered on directly
-into what's now `interaction-pile-test.js`, and this fall-only spike was
-superseded and removed.
+into that same shader/simulation approach (what's now `pile.js`/
+`interaction-pile.wgsl`), and this fall-only spike was superseded and
+removed.
+
+### WebGPU debug page (`interaction-pile-test.*`, retired)
+
+A standalone debug page - its own toggle-button UI (fall/reset) instead of
+story-driven cues, no poem/audio - used throughout development to test pile
+physics changes safely without clicking through the whole poem to reach
+them. Removed once the piece was finished and no further physics tuning was
+expected; its astronomy math and particle/shader plumbing had been kept as
+a near-duplicate of `pile.js`'s own throughout, specifically so it could be
+deleted cleanly without leaving pile.js depending on it.
