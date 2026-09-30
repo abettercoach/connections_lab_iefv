@@ -1,8 +1,23 @@
 html, body {
 	margin: 0;
 	height: 100%;
-	background: #ffffff;
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+	/* Opens on a plain night: white poem text on a black page, before the
+	   disk or any stars exist. scene-director.js's 'reveal-disk' cue plays a
+	   two-stage entrance (see revealDisk() in disk-entrance.js): the stars
+	   fade in first against this dark background, and only once that's
+	   done does the disk fade in and this flip to .day. Stepping back past
+	   that beat (undoCue()'s hideDisk()) removes .day again. */
+	background: #000000;
+	color: #ffffff;
+	transition: background 2400ms ease, color 2400ms ease;
+}
+
+body.day {
+	background: #ffffff;
 	color: #14161c;
 }
 
@@ -19,18 +34,9 @@ html, body {
 	left: 0;
 	width: 100%;
 	height: 100%;
-	/* Hidden until scene-director.js's 'reveal-disk' cue adds .revealed (see
-	   revealDisk() in disk-entrance.js) - a simple fade/scale entrance for
-	   the disk and whatever stars are on it together, kept entirely in CSS
-	   so pile.js never needs to know an entrance animation exists. */
-	opacity: 0;
-	transform: scale(0.85);
-	transition: opacity 2400ms ease, transform 2400ms ease;
-}
-
-#sky.revealed {
-	opacity: 1;
-	transform: scale(1);
+	/* Plain positioning wrapper only - #disk-canvas and #pile-canvas each
+	   own their own opacity fade below, so the two stages (stars, then
+	   disk) can run one after the other. Never scaled or faded as a unit. */
 }
 
 #disk-canvas {
@@ -45,8 +51,17 @@ html, body {
 	   behind #pile-canvas so a star rendered outside the disk shows black
 	   against the page's own light background, and a star inside it shows
 	   white against this dark circle - the WebGPU canvas itself is left
-	   transparent so this shows through. */
+	   transparent so this shows through. Hidden (opacity only, never
+	   scaled) until scene-director.js's 'reveal-disk' cue adds .revealed,
+	   which revealDisk() (disk-entrance.js) does only after the stars below
+	   have finished fading in. */
+	opacity: 0;
+	transition: opacity 2400ms ease;
 	pointer-events: none;
+}
+
+#disk-canvas.revealed {
+	opacity: 1;
 }
 
 #pile-canvas {
@@ -56,6 +71,16 @@ html, body {
 	left: 0;
 	width: 100%;
 	height: 100%;
+	/* Hidden (opacity only, never scaled) until revealDisk() adds
+	   .stars-in - the first stage of the entrance, fading the settled
+	   stars in against the still-dark page before the disk itself
+	   appears. */
+	opacity: 0;
+	transition: opacity 1600ms ease;
+}
+
+#pile-canvas.stars-in {
+	opacity: 1;
 }
 
 #overlay-canvas {
@@ -82,12 +107,16 @@ html, body {
 	font-style: italic;
 	font-size: 15px;
 	line-height: 1.6;
-	color: #14161c;
+	color: inherit;
 	pointer-events: none;
 }
 
 #margin-text p {
 	margin: 0 0 0.8em;
+}
+
+#margin-text .margin-gap {
+	height: 1.1em;
 }
 
 #story-advance {

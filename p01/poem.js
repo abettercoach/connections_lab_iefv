@@ -38,7 +38,7 @@ const POEM_BEATS = [
 		lines: [
 			'It took me years to accept that they',
 			'came out to me the same night as bigots',
-			' ',
+			'',
 			'heaven fell atop a felled home',
 			'and the song that put my child self to sleep',
 			'turned awful silent'
@@ -54,15 +54,15 @@ const POEM_BEATS = [
 			'but the stars in my heart',
 			'have always twinkled above',
 			'Ponce',
-			' ',
+			'',
 			'the spirit of Boriké is coolest',
 			'between sunset and sunrise',
 			'after the coquí calls',
 			'before the gallo sings',
-			' ',
+			'',
 			'can you help me pick up',
 			'the night sky?',
-			' ',
+			'',
 			'can you help me recall',
 			'the music of my dreams?'
 		],

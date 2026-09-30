@@ -16,6 +16,11 @@ function advanceStory(storyState) {
 	return { beatIndex: storyState.beatIndex + 1 };
 }
 
+function retreatStory(storyState) {
+	if (storyState.beatIndex <= 0) return storyState;
+	return { beatIndex: storyState.beatIndex - 1 };
+}
+
 function isStoryComplete(storyState) {
 	return storyState.beatIndex >= POEM_BEATS.length;
 }

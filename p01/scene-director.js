@@ -32,13 +32,46 @@ function applyCue(cue, sceneState) {
 			fadeOutAmbientSoundscape(2000);
 			break;
 		case 'begin-interaction':
-			// Dragging is already possible the moment stars are settled in
-			// the pile (see pile.js's isFalling gate) - reserved here in
-			// case a future first-time hint or similar needs a hook.
+			// Dragging owns the page's pointer events from here on - stop
+			// the advance layer from intercepting clicks meant for stars.
+			enableStoryAdvance(false);
 			break;
 		default:
 			console.warn(`Unknown story cue: ${cue}`);
 	}
 	return sceneState;
+}
+
+// The inverse of applyCue(): undoes one cue's effects, for stepping
+// backward past the beat that introduced it (see story.js's
+// retreatStory() and piece.js's handleRetreat()). Cues are undone in the
+// reverse order applyCue() would apply them for the same beat.
+function undoCue(cue, sceneState) {
+	switch (cue) {
+		case 'fade-audio-in':
+			stopAmbientSoundscape();
+			break;
+		case 'reveal-disk':
+			hideDisk();
+			resetPile();
+			sceneState.diskRevealed = false;
+			sceneState.starsRevealed = false;
+			break;
+		case 'shatter':
+			resetPile();
+			fadeInAmbientSoundscape(sceneState.recordings, 5, 400);
+			break;
+		case 'begin-interaction':
+			enableStoryAdvance(true);
+			break;
+		default:
+			console.warn(`Unknown story cue: ${cue}`);
+	}
+	return sceneState;
+}
+
+function enableStoryAdvance(enabled) {
+	const advanceLayer = document.querySelector('#story-advance');
+	if (advanceLayer) advanceLayer.style.pointerEvents = enabled ? 'auto' : 'none';
 }
 
