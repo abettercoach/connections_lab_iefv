@@ -27,7 +27,7 @@ const POEM_BEATS = [
 	{
 		lines: [
 			'these were the stars over my childhood home,',
-			'that night my spouse and I travelled',
+			'that night when my spouse and I travelled',
 			'from our home in New York to my parents\' in Minnesota,',
 			'to tell them we were queer and we were married.'
 		],
@@ -36,7 +36,7 @@ const POEM_BEATS = [
 	{
 		// Two stanzas shown together as one beat.
 		lines: [
-			'It took me years to accept that they',
+			'it took me years to accept that they',
 			'came out to us the same night too, as bigots',
 			'',
 			'heaven fell atop a felled home',
@@ -49,9 +49,9 @@ const POEM_BEATS = [
 		// Four stanzas shown together as one beat - the poem keeps going
 		// in the margins while the visitor is free to drag stars.
 		lines: [
-			'we flew at night',
+			'while we flew at night',
 			'from East to Midwest',
-			'but the stars in my heart',
+			'the stars in my heart',
 			'have always twinkled above',
 			'Ponce',
 			'',
